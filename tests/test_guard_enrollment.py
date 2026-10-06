@@ -20,7 +20,7 @@ from pysteam import (
     SteamResultError,
     load_mafile,
 )
-from pysteam.guard_enrollment import _save_backup, _TwoFactorService
+from pysteam.accounts.enrollment import _save_backup, _TwoFactorService
 from pysteam.proto import steammessages_twofactor_steamclient_pb2 as twofactor
 
 STEAM_ID = 76561197960265729
@@ -236,7 +236,7 @@ async def test_login_begin_finalize_and_resume(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = _FakeService()
-    monkeypatch.setattr("pysteam.guard_enrollment._TwoFactorService", lambda _client: fake)
+    monkeypatch.setattr("pysteam.accounts.enrollment._TwoFactorService", lambda _client: fake)
     client = SteamClient(cm_endpoints=["wss://example.invalid/cmsocket/"])
     client._auth = _FakeAuth()  # type: ignore[assignment]
     enrollment = GuardEnrollmentClient(client)
@@ -286,7 +286,7 @@ async def test_existing_authenticator_blocks_add(
 ) -> None:
     fake = _FakeService()
     fake.active = True
-    monkeypatch.setattr("pysteam.guard_enrollment._TwoFactorService", lambda _client: fake)
+    monkeypatch.setattr("pysteam.accounts.enrollment._TwoFactorService", lambda _client: fake)
     client = SteamClient(cm_endpoints=["wss://example.invalid/cmsocket/"])
     client._auth = _FakeAuth()  # type: ignore[assignment]
     try:

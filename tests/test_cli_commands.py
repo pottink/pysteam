@@ -9,11 +9,11 @@ import pytest
 from typer.testing import CliRunner
 
 import pysteam.cli as cli
-from pysteam.auth import AuthTokens, LoginResult
-from pysteam.cdn import DepotFile, DepotManifest
-from pysteam.credentials import LoginCredentials
+from pysteam.accounts.auth import AuthTokens, LoginResult
+from pysteam.accounts.credentials import LoginCredentials
+from pysteam.accounts.mafile import ImportedAuthenticator
+from pysteam.content.cdn import DepotFile, DepotManifest
 from pysteam.errors import MaFileError, ProtocolError, SteamResultError
-from pysteam.mafile import ImportedAuthenticator
 
 
 def test_steamid_parse_and_help() -> None:

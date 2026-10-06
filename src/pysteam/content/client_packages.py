@@ -15,8 +15,8 @@ from urllib.parse import urlsplit
 import httpx
 import msgspec
 
+from pysteam.content.pics import KVValue, parse_vdf_document
 from pysteam.errors import CDNError, TransportError
-from pysteam.pics import KVValue, parse_vdf_document
 from pysteam.proto import steammessages_contentsystem_steamclient_pb2 as content
 
 if TYPE_CHECKING:

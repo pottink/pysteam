@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from pysteam import CDNError, WorkshopClient
-from pysteam.clientpackages import parse_client_manifest
+from pysteam.content.client_packages import parse_client_manifest
 from pysteam.proto import steammessages_publishedfile_steamclient_pb2 as published
 
 

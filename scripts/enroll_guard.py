@@ -17,7 +17,7 @@ from pysteam import (
     SteamError,
     default_profile_dir,
 )
-from pysteam.profiles import ensure_private_directory
+from pysteam.accounts.profiles import ensure_private_directory
 
 
 async def _challenge(challenge: GuardChallenge) -> str | None:

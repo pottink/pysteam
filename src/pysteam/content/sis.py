@@ -14,11 +14,11 @@ from typing import TYPE_CHECKING
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
 
+from pysteam.content.pics import _tokens
 from pysteam.errors import CDNError
-from pysteam.pics import _tokens
 
 if TYPE_CHECKING:
-    from pysteam.archive import ArchiveStore
+    from pysteam.content.archive import ArchiveStore
 
 _CSM_HEADER = struct.Struct("<4sIIII")
 _CSM_ENTRY = struct.Struct("<20sQII")
@@ -343,7 +343,7 @@ def _encrypt_decrypted_chunk(raw: bytes, key: bytes) -> bytes:
 
 def import_sis(store: ArchiveStore, backup: SISBackup) -> dict[int, bool]:
     """Import chunks only when a matching original manifest and depot key exist."""
-    from pysteam.archive import ArchiveRecord
+    from pysteam.content.archive import ArchiveRecord
 
     results: dict[int, bool] = {}
     for depot_id, manifest_id in backup.manifests.items():

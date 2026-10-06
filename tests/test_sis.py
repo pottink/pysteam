@@ -8,7 +8,7 @@ import pytest
 from test_archive import CONTENT, KEY, PASSWORD, _manifest
 
 from pysteam import ArchiveStore, CDNError
-from pysteam.sis import (
+from pysteam.content.sis import (
     export_sis,
     import_sis,
     inspect_csm,

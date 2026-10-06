@@ -10,9 +10,14 @@ import pytest
 from typer.testing import CliRunner
 
 from pysteam import EncryptedFileCredentialStore, LoginCredentials, ProfileError
+from pysteam.accounts.migration import migrate_legacy_data
+from pysteam.accounts.profiles import (
+    ProfileRegistry,
+    SavedProfile,
+    default_profile_dir,
+    legacy_profile_dir,
+)
 from pysteam.cli import main
-from pysteam.migration import migrate_legacy_data
-from pysteam.profiles import ProfileRegistry, SavedProfile, default_profile_dir, legacy_profile_dir
 
 
 def _locations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:

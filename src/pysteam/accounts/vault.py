@@ -16,8 +16,8 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from filelock import FileLock
 from filelock import Timeout as FileLockTimeout
 
+from pysteam.accounts.profiles import default_profile_dir, ensure_private_directory
 from pysteam.errors import CredentialStoreError
-from pysteam.profiles import default_profile_dir, ensure_private_directory
 
 _MAGIC = b"PYSTEAM-VAULT-1\0"
 _SALT_SIZE = 16

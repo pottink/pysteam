@@ -22,7 +22,7 @@ from pysteam import (
     load_mafile,
 )
 from pysteam._terminal import enable_debug_logging
-from pysteam.profiles import ensure_private_directory
+from pysteam.accounts.profiles import ensure_private_directory
 
 _CONSOLE = Console(highlight=False)
 

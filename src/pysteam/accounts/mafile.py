@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from pysteam.credentials import LoginCredentials
+from pysteam.accounts.credentials import LoginCredentials
 from pysteam.errors import MaFileError
 
 _MAX_FILE_BYTES = 1024 * 1024

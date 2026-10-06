@@ -19,12 +19,14 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from google.protobuf.message import DecodeError, Message
 
-from pysteam.auth import (
+from pysteam.accounts.auth import (
     AuthenticationInteractionRequired,
     AuthTokens,
     GuardChallenge,
     GuardChallengeHandler,
 )
+from pysteam.accounts.guard import guard_code
+from pysteam.accounts.mafile import load_mafile
 from pysteam.errors import (
     EnrollmentError,
     ProtocolError,
@@ -32,8 +34,6 @@ from pysteam.errors import (
     SteamResultError,
     TransportError,
 )
-from pysteam.guard import guard_code
-from pysteam.mafile import load_mafile
 from pysteam.proto import steammessages_twofactor_steamclient_pb2 as twofactor
 
 if TYPE_CHECKING:

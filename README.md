@@ -75,6 +75,6 @@ See the [Python examples](docs/examples.md) for authentication, WebAPI, CDN, and
 ## Project links
 
 - [CLI and SDK examples](docs/examples.md) · [protobuf updater](scripts/update_protos.py) · [issue audit](docs/issue-audit.json)
-- [Development and release checks](docs/release.md) · [source provenance](docs/prior-project-review.md) · [content references](docs/content-references.md)
+- [Development and release checks](docs/release.md) · [package layout](docs/architecture.md) · [source provenance](docs/prior-project-review.md) · [content references](docs/content-references.md)
 
 Licensed under [MIT](LICENSE). Independent of Valve and Steam.
