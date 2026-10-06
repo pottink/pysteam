@@ -119,6 +119,36 @@ async def test_cdn_auth_um() -> None:
 
 
 @pytest.mark.asyncio
+async def test_manifest_request_code_uses_selected_branch() -> None:
+    class FakeClient:
+        async def call_um(self, name, request, _response_type):
+            assert name == "ContentServerDirectory.GetManifestRequestCode#1"
+            assert (request.app_id, request.depot_id, request.manifest_id) == (570, 123, 456)
+            assert (request.app_branch, request.branch_password_hash) == ("beta", "hash")
+            return content_proto.CContentServerDirectory_GetManifestRequestCode_Response(
+                manifest_request_code=42
+            )
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/depot/123/manifest/456/5/42"
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("manifest", _manifest("beta.txt"))
+        return httpx.Response(200, content=output.getvalue())
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        manifest = await CDNClient(FakeClient(), http=http).get_manifest(
+            server="https://cdn.test",
+            app_id=570,
+            depot_id=123,
+            manifest_id=456,
+            branch="beta",
+            branch_password_hash="hash",
+        )
+        assert manifest.files[0].name == "beta.txt"
+
+
+@pytest.mark.asyncio
 async def test_manifest_refetch() -> None:
     responses = ["first.txt", "second.txt"]
 

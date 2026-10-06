@@ -8,7 +8,7 @@ import logging
 import platform
 import random
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import httpx
@@ -23,10 +23,13 @@ from pysteam.errors import (
     SteamResultError,
     TransportError,
 )
+from pysteam.pics import KVValue, PICSAccessTokens, extract_manifest_ids, parse_app_vdf
 from pysteam.proto import enums_clientserver_pb2 as emsg
 from pysteam.proto.steammessages_base_pb2 import CMsgProtoBufHeader
 from pysteam.proto.steammessages_clientserver_2_pb2 import CMsgGCClient
 from pysteam.proto.steammessages_clientserver_appinfo_pb2 import (
+    CMsgClientPICSAccessTokenRequest,
+    CMsgClientPICSAccessTokenResponse,
     CMsgClientPICSProductInfoRequest,
     CMsgClientPICSProductInfoResponse,
 )
@@ -63,8 +66,8 @@ def _os_type() -> int:
 
 @dataclass(frozen=True, slots=True)
 class PICSInfo:
-    apps: dict[int, bytes]
-    packages: dict[int, bytes]
+    apps: dict[int, bytes] = field(repr=False)
+    packages: dict[int, bytes] = field(repr=False)
     unknown_app_ids: frozenset[int]
     unknown_package_ids: frozenset[int]
     missing_app_tokens: frozenset[int]
@@ -498,6 +501,86 @@ class SteamClient:
             frozenset(missing_apps),
             frozenset(missing_packages),
         )
+
+    async def get_access_tokens(
+        self,
+        *,
+        app_ids: Sequence[int] = (),
+        package_ids: Sequence[int] = (),
+        timeout: float | None = None,
+    ) -> PICSAccessTokens:
+        """Request access tokens for PICS app and package metadata."""
+        if not app_ids and not package_ids:
+            raise ValueError("provide at least one app or package ID")
+        for item_id in (*app_ids, *package_ids):
+            if not 0 <= item_id <= 0xFFFFFFFF:
+                raise ValueError("PICS ID out of range")
+        request = CMsgClientPICSAccessTokenRequest(appids=app_ids, packageids=package_ids)
+        packet = (
+            await self._request(
+                emsg.k_EMsgClientPICSAccessTokenRequest,
+                request,
+                emsg.k_EMsgClientPICSAccessTokenResponse,
+                timeout=timeout,
+            )
+        )[0]
+        response = CMsgClientPICSAccessTokenResponse()
+        try:
+            response.ParseFromString(packet.body)
+        except DecodeError as exc:
+            raise ProtocolError("invalid PICS access-token response") from exc
+        return PICSAccessTokens(
+            apps={item.appid: item.access_token for item in response.app_access_tokens},
+            packages={item.packageid: item.access_token for item in response.package_access_tokens},
+            denied_app_ids=frozenset(response.app_denied_tokens),
+            denied_package_ids=frozenset(response.package_denied_tokens),
+        )
+
+    async def get_app_info(
+        self,
+        app_id: int,
+        *,
+        access_token: int | None = None,
+        auto_access_token: bool = True,
+        timeout: float | None = None,
+    ) -> dict[str, KVValue]:
+        """Fetch and parse a text VDF PICS app-info response."""
+        result = await self.get_product_info(
+            app_ids=(app_id,),
+            app_tokens={app_id: access_token} if access_token is not None else None,
+            timeout=timeout,
+        )
+        if app_id in result.missing_app_tokens:
+            if not auto_access_token or access_token is not None:
+                raise ProtocolError("PICS app info requires a valid access token")
+            tokens = await self.get_access_tokens(app_ids=(app_id,), timeout=timeout)
+            token = tokens.apps.get(app_id)
+            if token is None:
+                raise ProtocolError("PICS app access token is unavailable")
+            result = await self.get_product_info(
+                app_ids=(app_id,), app_tokens={app_id: token}, timeout=timeout
+            )
+            if app_id in result.missing_app_tokens:
+                raise ProtocolError("PICS app access token was rejected")
+        payload = result.apps.get(app_id)
+        if payload is None:
+            raise KeyError(app_id)
+        app_info = parse_app_vdf(payload)
+        if app_info.get("appid") != str(app_id):
+            raise ProtocolError("PICS app-info ID does not match the request")
+        return app_info
+
+    async def get_app_manifest_ids(
+        self,
+        app_id: int,
+        *,
+        branch: str = "public",
+        access_token: int | None = None,
+        timeout: float | None = None,
+    ) -> dict[int, int]:
+        """Return depot manifest IDs from PICS app info for one branch."""
+        app_info = await self.get_app_info(app_id, access_token=access_token, timeout=timeout)
+        return extract_manifest_ids(app_info, branch=branch)
 
     async def send_gc(self, app_id: int, msg_type: int, payload: bytes) -> None:
         if not 0 <= app_id <= 0xFFFFFFFF or not 0 <= msg_type <= 0xFFFFFFFF:

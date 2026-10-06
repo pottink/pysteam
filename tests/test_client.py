@@ -8,6 +8,8 @@ from pysteam.proto import enums_clientserver_pb2 as emsg
 from pysteam.proto.steammessages_base_pb2 import CMsgProtoBufHeader
 from pysteam.proto.steammessages_clientserver_2_pb2 import CMsgGCClient
 from pysteam.proto.steammessages_clientserver_appinfo_pb2 import (
+    CMsgClientPICSAccessTokenResponse,
+    CMsgClientPICSProductInfoRequest,
     CMsgClientPICSProductInfoResponse,
 )
 from pysteam.proto.steammessages_clientserver_login_pb2 import CMsgClientHello
@@ -245,5 +247,82 @@ async def test_request_timeout_removes_waiter() -> None:
             )
         )
         assert (await client.recv_packet(timeout=1)).emsg == emsg.k_EMsgServiceMethodResponse
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_pics_access_tokens() -> None:
+    client, socket = _ready_client()
+    try:
+        pending = asyncio.create_task(client.get_access_tokens(app_ids=[570], package_ids=[1]))
+        request = decode_packet(await socket.sent.get())
+        assert request.emsg == emsg.k_EMsgClientPICSAccessTokenRequest
+        response = CMsgClientPICSAccessTokenResponse()
+        response.app_access_tokens.add(appid=570, access_token=123)
+        response.package_denied_tokens.append(1)
+        await socket.incoming.put(
+            encode_packet(
+                emsg.k_EMsgClientPICSAccessTokenResponse,
+                response,
+                CMsgProtoBufHeader(jobid_target=request.header.jobid_source),
+            )
+        )
+        tokens = await pending
+        assert tokens.apps == {570: 123}
+        assert tokens.denied_package_ids == frozenset({1})
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_app_info_retries_with_access_token() -> None:
+    client, socket = _ready_client()
+    try:
+        pending = asyncio.create_task(client.get_app_manifest_ids(570))
+        first = decode_packet(await socket.sent.get())
+        assert first.emsg == emsg.k_EMsgClientPICSProductInfoRequest
+        missing = CMsgClientPICSProductInfoResponse()
+        missing.apps.add(appid=570, missing_token=True)
+        await socket.incoming.put(
+            encode_packet(
+                emsg.k_EMsgClientPICSProductInfoResponse,
+                missing,
+                CMsgProtoBufHeader(jobid_target=first.header.jobid_source),
+            )
+        )
+
+        access = decode_packet(await socket.sent.get())
+        assert access.emsg == emsg.k_EMsgClientPICSAccessTokenRequest
+        tokens = CMsgClientPICSAccessTokenResponse()
+        tokens.app_access_tokens.add(appid=570, access_token=123)
+        await socket.incoming.put(
+            encode_packet(
+                emsg.k_EMsgClientPICSAccessTokenResponse,
+                tokens,
+                CMsgProtoBufHeader(jobid_target=access.header.jobid_source),
+            )
+        )
+
+        second = decode_packet(await socket.sent.get())
+        assert second.emsg == emsg.k_EMsgClientPICSProductInfoRequest
+        request = CMsgClientPICSProductInfoRequest.FromString(second.body)
+        assert request.apps[0].access_token == 123
+        found = CMsgClientPICSProductInfoResponse()
+        found.apps.add(
+            appid=570,
+            buffer=(
+                b'"appinfo" { "appid" "570" "depots" { '
+                b'"1" { "manifests" { "public" { "gid" "2" } } } } }'
+            ),
+        )
+        await socket.incoming.put(
+            encode_packet(
+                emsg.k_EMsgClientPICSProductInfoResponse,
+                found,
+                CMsgProtoBufHeader(jobid_target=second.header.jobid_source),
+            )
+        )
+        assert await pending == {1: 2}
     finally:
         await client.aclose()
