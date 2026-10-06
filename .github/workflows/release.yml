@@ -46,6 +46,7 @@ jobs:
       - name: Build and test distribution
         run: |
           uv build --no-sources
+          uv run python scripts/check_release_artifacts.py
           uv run python scripts/check_wheel.py --python 3.14
 
       - name: Save distributions

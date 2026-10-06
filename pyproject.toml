@@ -51,14 +51,6 @@ dev = [
 
 [tool.uv.build-backend]
 module-name = "pysteam"
-source-include = [
-    "scripts/**",
-    "tests/**",
-    "docs/**",
-    "vendor/steam-protobufs/steam/*.proto",
-    "vendor/steam-protobufs/LICENSE",
-    ".gitmodules",
-]
 
 [tool.ruff]
 line-length = 100

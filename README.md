@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/pysteam-banner.svg" alt="pysteam — Python-first Steam SDK" width="100%">
+  <img src="https://raw.githubusercontent.com/pottink/pysteam/main/docs/assets/pysteam-banner.svg" alt="pysteam — Python-first Steam SDK" width="100%">
 </p>
 
 <p align="center">
@@ -53,7 +53,7 @@ uv run pysteam archive verify 221 MANIFEST_ID
 uv run pysteam archive extract 221 MANIFEST_ID --output restored
 ```
 
-`init` creates a protected vault under `./.pysteam`; account setup offers it automatically. Later commands ask for its password once per run. Set `PYSTEAM_VAULT_PASSPHRASE` through a secret manager for unattended use. Existing `PYSTEAM_STORE_PASSPHRASE` remains an alias. The maFile backup password is separate. Use `vault change-password` to rotate the vault and registered archive key capsules. See the [account and archive guide](docs/examples.md#content-preservation).
+`init` creates a protected vault under `./.pysteam`; account setup offers it automatically. Later commands ask for its password once per run. Set `PYSTEAM_VAULT_PASSPHRASE` through a secret manager for unattended use. Existing `PYSTEAM_STORE_PASSPHRASE` remains an alias. The maFile backup password is separate. Use `vault change-password` to rotate the vault and registered archive key capsules. See the [account and archive guide](https://github.com/pottink/pysteam/blob/main/docs/examples.md#content-preservation).
 
 ## Use the SDK
 
@@ -70,11 +70,11 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-See the [Python examples](docs/examples.md) for authentication, WebAPI, CDN, and Game Coordinator usage.
+See the [Python examples](https://github.com/pottink/pysteam/blob/main/docs/examples.md) for authentication, WebAPI, CDN, and Game Coordinator usage.
 
 ## Project links
 
-- [CLI and SDK examples](docs/examples.md) · [protobuf updater](scripts/update_protos.py) · [issue audit](docs/issue-audit.json)
-- [Development and release checks](docs/release.md) · [package layout](docs/architecture.md) · [content references](docs/content-references.md)
+- [CLI and SDK examples](https://github.com/pottink/pysteam/blob/main/docs/examples.md) · [protobuf updater](https://github.com/pottink/pysteam/blob/main/scripts/update_protos.py) · [issue audit](https://github.com/pottink/pysteam/blob/main/docs/issue-audit.json)
+- [Development and release checks](https://github.com/pottink/pysteam/blob/main/docs/release.md) · [package layout](https://github.com/pottink/pysteam/blob/main/docs/architecture.md) · [content references](https://github.com/pottink/pysteam/blob/main/docs/content-references.md)
 
-Licensed under [MIT](LICENSE). Independent of Valve and Steam.
+Licensed under [MIT](https://github.com/pottink/pysteam/blob/main/LICENSE). Independent of Valve and Steam.

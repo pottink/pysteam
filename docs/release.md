@@ -1,189 +1,62 @@
-# Release gate
+# Release guide
 
-## Current status (2026-10-06)
+The distribution name is `pysteam-sdk` and the import name is `pysteam`. The
+release workflow is manual. It builds from a version tag, verifies the resulting
+wheel and source archive, then uploads them through PyPI Trusted Publishing.
 
-- Offline checks pass on Python 3.13 and 3.14, including 120 tests, protobuf
-  generation, issue-audit validation, Ruff, mypy, package builds, and isolated
-  wheel import and CLI checks.
-- Windows, Linux, and macOS CI passed on Python 3.13 and 3.14 for commit
-  `8e3fd76`. The Python 3.15 preview lane also passed. Check CI again after
-  the CDN fixes and each release change.
-- Anonymous live checks passed for CM logon, PICS app data and manifest
-  references, CDN server discovery, WebAPI server info, and Steam time sync.
-  `pysteam doctor` and `pysteam app 220` also passed.
-- A manually run saved-profile check on 2026-10-06 reported successful
-  authenticated CM logon, PICS app 570 and manifest references, CDN server
-  discovery, and WebAPI server info on commit `71a1d12`. The account identity
-  is kept out of this public repository.
-- Multi-account profiles, vault migration, Steam Guard enrollment handoff,
-  authentication, and content tools have offline coverage. QR, GC, and
-  controlled-account depot checks remain pending.
-- A live archive check on 2026-10-06 used locally supplied backup keys to
-  archive and verify all nine selected current Windows/English depots of app
-  570, then restore 6,936 files (71.43 GiB) from 32.53 GiB of encrypted
-  chunks. The complete one-depot sample app 480/481 also archived, verified,
-  and restored: eight chunks and eight files. These checks found and fixed
-  wrapped Base64 filenames, raw LZMA streams without end markers, and zero-byte
-  files with Steam's all-zero checksum. They do not replace an entitled-account
-  archive check.
-- Anonymous depot-key access for a protected depot returned EResult 15, as
-  expected; the CLI explains that an entitled account is needed.
-- The `pysteam-sdk` PyPI JSON endpoint returned HTTP 404 on this date. This is
-  not a reservation; check again immediately before publishing.
-- The portable archive, first-run vault, SteamPipe/SIS import and export,
-  Workshop metadata and content, and Steam client package commands have
-  offline fixtures and command checks. Anonymous live Workshop discovery and
-  Steam client update manifest retrieval passed. A package download and
-  controlled-account archive/restore smoke have not been run.
-- Synthetic 1, 8, and 16-worker archive benchmarks are recorded in
-  [archive-benchmark.md](archive-benchmark.md), along with a small live CDN
-  comparison. The synthetic results are local fixture measurements.
-- Vault password rotation updates registered archive capsules during a normal
-  run and rolls them back on a handled failure. A power loss during rotation
-  can leave a subset using the new password; preserve both passwords until
-  all registered archives have been verified.
-- No release has been published.
+## Release checklist
 
-The first public release is gated on all of the following:
-
-1. Windows, Linux, and macOS CI pass for Python 3.13 and 3.14.
-2. `uv sync --locked --group dev`, protobuf generation check, Ruff, mypy,
-   pytest, issue-audit validation, build, and isolated wheel import/CLI pass.
-3. Run the account and archive smoke procedures below with a separate Steam account
-   controlled by the maintainer. Record date, tested SteamID, app/depot IDs,
-   outcome, and SDK commit privately; do not commit account identity,
-   credentials, tokens, Guard secrets, network packet bodies, or depot keys.
-4. Verify portable offline extraction, SIS export and import, and Workshop
-   content with controlled content on each supported platform.
-5. Resolve any confirmed first-release defect found by the issue audit or
-   smoke tests. `docs/issue-audit.json` contains the kickoff snapshot.
-6. Recheck availability of the `pysteam-sdk` distribution name and publish
-   only after the gate passes.
-
-## Account smoke procedure
-
-Use a dedicated test account. Supply `PYSTEAM_TEST_USERNAME` and its refresh
-token through `PYSTEAM_TEST_REFRESH_TOKEN`, then run:
-
-```powershell
-uv run python scripts/smoke_live.py --i-control-account
-```
-
-If the dedicated test account is registered with `pysteam account add`, run
-`uv run python scripts/smoke_live.py --saved-account TEST_ACCOUNT` instead.
-The script prompts privately for the vault password unless a vault passphrase
-environment variable is set, and it uses the saved refresh token or password.
-No token needs to be copied into the shell.
-
-An anonymous read-only CM/PICS check can be run separately with
-`uv run python scripts/smoke_live.py --anonymous`. It does not replace the
-account smoke procedure.
-
-This verifies CM discovery, refresh-token logon,
-and PICS for app 570. Separately exercise anonymous logon, credential login
-with each allowed Guard challenge type, QR approval, reconnect after a
-controlled socket closure, and GC messaging in an app that supports it.
-For a depot the account owns, set the optional app/depot/manifest variables
-`PYSTEAM_TEST_APP_ID`, `PYSTEAM_TEST_DEPOT_ID`, and
-`PYSTEAM_TEST_MANIFEST_ID`. Set `PYSTEAM_TEST_FILE` to one manifest filename
-to download and verify a sample. If the CDN needs an auth token, set
-`PYSTEAM_TEST_CDN_AUTH=1`. The script discards the sample file after checking
-it. Inspect exception types and Steam result codes without recording secrets.
-
-For automatic Steam Guard login, use a separate account with a known shared
-secret and supply `PYSTEAM_TEST_USERNAME`, `PYSTEAM_TEST_PASSWORD`,
-`PYSTEAM_TEST_SHARED_SECRET`, and `PYSTEAM_TEST_STORE_PASSPHRASE` through a
-secret manager. Run `uv run python scripts/smoke_live.py --auto-login`. The
-encrypted test store is created in a temporary directory and removed after
-the login. This opt-in procedure has not yet been run.
-
-Before publishing the enrollment feature, use a separate account without an
-existing mobile authenticator. Exercise both account setup paths with two
-test accounts:
-
-```powershell
-uv run pysteam account add NEW_TEST_ACCOUNT --enroll
-uv run pysteam account add EXISTING_TEST_ACCOUNT --mafile "PATH_TO_TEST_MAFILE"
-uv run pysteam account list
-uv run pysteam account use EXISTING_TEST_ACCOUNT
-uv run pysteam login
-uv run pysteam guard code
-```
-
-Supply `PYSTEAM_VAULT_PASSPHRASE` through a secret manager
-(`PYSTEAM_STORE_PASSPHRASE` remains an alias). Check an entitled
-depot command without repeating the maFile path, explicit `--account`
-selection, and that switching the default does not mix encrypted stores.
-Confirm `--anonymous` bypasses the selected account for depot access.
-
-Verify that the backup folder contains an encrypted maFile and manifest, that
-`load_mafile()` can read it with the passphrase, and that Steam reports active
-enrollment. Record only the outcome, date, SteamID, and SDK commit. Keep the
-recovery code, passphrase, backup contents, and activation code out of the
-test record. Also verify `--resume-enrollment` on an intentionally interrupted
-enrollment with a separate test account; do not remove or transfer an existing
-authenticator as part of this smoke test.
-
-## Content archive smoke procedure
-
-On a dedicated account with rights to a small test depot, set
-`PYSTEAM_TEST_USERNAME`, `PYSTEAM_TEST_REFRESH_TOKEN`,
-`PYSTEAM_TEST_APP_ID`, `PYSTEAM_TEST_DEPOT_ID`, and
-`PYSTEAM_TEST_MANIFEST_ID` through the test environment. Then run:
-
-```powershell
-uv run python scripts/smoke_archive.py --i-control-account
-```
-
-For a registered test profile, set only `PYSTEAM_TEST_APP_ID` and
-`PYSTEAM_TEST_DEPOT_ID` (and optionally `PYSTEAM_TEST_MANIFEST_ID`), then run
-`uv run python scripts/smoke_archive.py --i-control-account --account TEST_ACCOUNT`.
-The vault password is prompted privately unless supplied through the existing
-environment setting. The account must be entitled to the chosen depot.
-
-The script archives encrypted chunks, verifies the offline copy, extracts one
-sample file to a temporary directory, and verifies its digest. It is opt-in and
-has not been run with a controlled account in this workspace. Also exercise
-`pysteam archive repair`
-after removing a chunk from a *copy* of a test archive, `archive rekey` after
-moving that copy to another directory, and SIS export/import with the same
-controlled depot. Record IDs and results only; keep depot keys and tokens out
-of logs and fixtures.
-
-## Publishing
-
-The release workflow at `.github/workflows/release.yml` runs only when started
-manually. It requires a `v`-prefixed Git tag whose version exactly matches
-`pyproject.toml`, repeats the offline checks, builds from source, tests the
-wheel, and uploads the same artifacts through PyPI Trusted Publishing. It does
-not publish on a push, tag creation, or ordinary CI run.
-
-Once all release gates above pass:
-
-1. Inspect the wheel and source archive for unintended files or private data.
-   A PyPI upload is public and cannot be replaced at the same version.
-2. In the GitHub repository, create an environment named `pypi` and configure
-   its required reviewer and deployment restrictions for release tags.
-3. In the PyPI account's **Publishing** settings, add a pending GitHub Trusted
-   Publisher with project `pysteam-sdk`, owner `pottink`, repository `pysteam`,
-   workflow `release.yml`, and environment `pypi`. The names must match exactly.
-   A pending publisher does not reserve the project name.
-4. Merge the release workflow into `main`, wait for CI to pass, then create and
-   push an annotated tag for the package version. For the current alpha:
+1. Run the checks on Windows, Linux, and macOS with Python 3.13 and 3.14.
+   The Python 3.15 preview lane is advisory until its final release and
+   dependencies are verified.
+2. Confirm generated protobuf classes, the issue audit, formatting, types,
+   tests, and both distribution artifacts:
 
    ```powershell
-   git tag -a v0.1.0a0 -m "pysteam-sdk 0.1.0a0"
-   git push origin v0.1.0a0
+   uv sync --locked --group dev
+   uv run python scripts/generate_protos.py --check
+   uv run python scripts/audit_issues.py --check
+   uv run ruff check src scripts tests
+   uv run ruff format --check src scripts tests
+   uv run mypy
+   uv run pytest -q
+   uv build --no-sources
+   uv run python scripts/check_release_artifacts.py
+   uv run python scripts/check_wheel.py --python 3.14
    ```
 
-5. Manually dispatch **Publish to PyPI** at that tag, using GitHub Actions or
-   `gh workflow run release.yml --ref v0.1.0a0`. Approve the protected `pypi`
-   environment after reviewing the build. The workflow needs no PyPI token.
-6. Check the published files and install from PyPI in an isolated environment:
+3. Run opt-in live checks with a separate Steam account controlled by the
+   maintainer. Cover saved login, Steam Guard challenges, CM reconnects, PICS,
+   a permitted depot archive and offline extraction, Workshop, and SIS import
+   and export. See the smoke scripts for their environment variables:
 
    ```powershell
-   uv run --no-project --isolated --python 3.14 --with pysteam-sdk==0.1.0a0 python -c "import pysteam"
+   uv run python scripts/smoke_live.py --saved-account TEST_ACCOUNT
+   uv run python scripts/smoke_archive.py --i-control-account --account TEST_ACCOUNT
    ```
 
-The 3.15 preview lane remains advisory until the final interpreter and
-dependencies are verified and the supported-version metadata is updated.
+4. Keep smoke records outside the repository. Record the date, package commit,
+   tested app and depot IDs, and outcome. Never commit credentials, tokens,
+   account identities, Guard material, depot keys, or raw authenticated
+   traffic.
+5. Resolve confirmed in-scope defects. Review the
+   [issue audit](issue-audit.json) and check the distribution name on PyPI
+   immediately before publishing.
+
+## Trusted Publisher setup
+
+Create a GitHub environment named `pypi`, with the desired reviewer and
+deployment restrictions. In PyPI's Publishing settings, configure a pending
+GitHub Trusted Publisher for project `pysteam-sdk`, owner `pottink`,
+repository `pysteam`, workflow `release.yml`, and environment `pypi`.
+The values must match. A pending publisher does not reserve the package name.
+
+After the checklist passes, update `pyproject.toml` to the release version,
+merge the release commit into `main`, and wait for CI. Create and push an
+annotated `v`-prefixed tag matching that version. Manually dispatch
+**Publish to PyPI** at that tag and approve the protected environment after
+reviewing the build. The workflow does not publish on ordinary pushes or tag
+creation and needs no PyPI token.
+
+Inspect the published files and install the exact version in an isolated
+environment. A PyPI upload is public and its version cannot be replaced.
