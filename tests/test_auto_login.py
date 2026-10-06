@@ -1,4 +1,7 @@
 import asyncio
+import base64
+import json
+import logging
 import os
 from pathlib import Path
 
@@ -16,7 +19,9 @@ from pysteam import (
     ProtocolError,
     RequestTimeout,
     SteamClient,
+    SteamResultError,
     guard_code,
+    load_mafile,
 )
 from pysteam.auth import AuthenticationClient
 from pysteam.proto import steammessages_auth_steamclient_pb2 as auth_proto
@@ -59,20 +64,20 @@ class FakeSession:
 
 
 class FakeAuth:
-    def __init__(self, session: FakeSession | None = None, *, result_code: int | None = None):
+    def __init__(self, session: FakeSession | None = None, *, cm_result_code: int | None = None):
         self.session = session
-        self.result_code = result_code
+        self.cm_result_code = cm_result_code
         self.began = 0
         self.guard_data = ""
         self.password = ""
         self.renewal = False
+        self.events: list[str] = []
 
     async def generate_access_token_result(
         self, _token: str, *, steam_id: int | None = None, allow_renewal: bool = False
     ) -> AccessTokenResult:
+        self.events.append("generate")
         self.renewal = allow_renewal
-        if self.result_code is not None:
-            raise AuthenticationError("GenerateAccessTokenForApp", self.result_code)
         return AccessTokenResult("access", "renewed-refresh")
 
     async def begin_credentials(
@@ -89,15 +94,18 @@ class FakeAuth:
         return 60.0
 
 
-async def _client(auth: FakeAuth) -> tuple[SteamClient, list[tuple[str, str, int]]]:
+async def _client(auth: FakeAuth) -> tuple[SteamClient, list[tuple[str, int, str]]]:
     client = SteamClient(cm_endpoints=["wss://example.invalid/cmsocket/"])
-    logons: list[tuple[str, str, int]] = []
+    logons: list[tuple[str, int, str]] = []
 
-    async def logon(access: str, refresh: str, steam_id: int) -> None:
-        logons.append((access, refresh, steam_id))
+    async def logon(refresh: str, steam_id: int, account_name: str) -> None:
+        auth.events.append("logon")
+        if auth.cm_result_code is not None and refresh in {"old", "renewed-refresh"}:
+            raise SteamResultError("CM logon", auth.cm_result_code)
+        logons.append((refresh, steam_id, account_name))
 
     client._auth = auth  # type: ignore[assignment]
-    client._logon_access_token = logon  # type: ignore[method-assign]
+    client._logon_refresh_token = logon  # type: ignore[assignment]
     return client, logons
 
 
@@ -111,20 +119,45 @@ async def test_refresh_renewal_and_invalid_token_fallback() -> None:
         assert result.method == "refresh_token"
         assert result.tokens.refresh_token == "renewed-refresh"
         assert auth.renewal and auth.began == 0
+        assert auth.events == ["logon", "generate"]
         assert store.value is not None and store.value.refresh_token == "renewed-refresh"
-        assert logons == [("access", "renewed-refresh", 42)]
+        assert logons == [("old", 42, "user")]
         assert "renewed-refresh" not in repr(result)
     finally:
         await client.aclose()
 
-    auth = FakeAuth(FakeSession((1,)), result_code=5)
+    auth = FakeAuth(FakeSession((1,)), cm_result_code=5)
     client, logons = await _client(auth)
     try:
         result = await client.login_auto("user", store=store)
         assert result.method == "credentials"
         assert auth.began == 1 and auth.guard_data == "trusted"
         assert store.value is not None and store.value.guard_data == "new-guard"
-        assert logons == [("new-access", "new-refresh", 42)]
+        assert logons == [("new-refresh", 42, "user")]
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_issued_refresh_token_is_saved_before_cm_logon() -> None:
+    store = MemoryStore()
+    client, _ = await _client(FakeAuth(FakeSession((1,))))
+
+    async def disconnected(_refresh: str, _steam_id: int, _account_name: str) -> None:
+        raise SteamResultError("CM logon", 15)
+
+    client._logon_refresh_token = disconnected  # type: ignore[assignment]
+    try:
+        with pytest.raises(SteamResultError, match="EResult 15"):
+            await client.login_auto(
+                "user",
+                credentials=LoginCredentials(password="password", shared_secret="secret"),
+                store=store,
+            )
+        assert store.value is not None
+        assert store.value.refresh_token == "new-refresh"
+        assert store.value.password == "password"
+        assert store.value.shared_secret == "secret"
     finally:
         await client.aclose()
 
@@ -136,21 +169,21 @@ async def test_auto_reconnect_recovers_with_saved_credentials() -> None:
     client, logons = await _client(auth)
     try:
         await client.login_auto("user", store=store)
-        auth.result_code = 5
+        auth.cm_result_code = 5
         await client._restore_session()
         assert auth.began == 1
         assert client.last_session_error is None
-        assert logons[-1] == ("new-access", "new-refresh", 42)
+        assert logons[-1] == ("new-refresh", 42, "user")
     finally:
         await client.aclose()
 
 
 @pytest.mark.asyncio
 async def test_rate_limit_does_not_retry_credentials() -> None:
-    auth = FakeAuth(FakeSession((1,)), result_code=84)
+    auth = FakeAuth(FakeSession((1,)), cm_result_code=84)
     client, _ = await _client(auth)
     try:
-        with pytest.raises(AuthenticationError) as captured:
+        with pytest.raises(SteamResultError) as captured:
             await client.login_auto(
                 "user", credentials=LoginCredentials("password", refresh_token="old", steam_id=42)
             )
@@ -220,7 +253,9 @@ async def test_authenticated_account_must_match_requested_account() -> None:
 @pytest.mark.asyncio
 async def test_auto_guard_code_uses_steam_time_and_retries_once(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
+    caplog.set_level(logging.DEBUG, logger="pysteam")
     clock = [1_700_000_000.0]
 
     async def advance(seconds: float) -> None:
@@ -231,17 +266,48 @@ async def test_auto_guard_code_uses_steam_time_and_retries_once(
     session = FakeSession((3,), mismatch=True)
     auth = FakeAuth(session)
     client, _ = await _client(auth)
+    shared_secret = "AQIDBAUGBwgJCgsMDQ4PEA=="
+    password = "test-password-please-redact"
     try:
         await client.login_auto(
             "user",
-            credentials=LoginCredentials(password="p", shared_secret="AQIDBAUGBwgJCgsMDQ4PEA=="),
+            credentials=LoginCredentials(password=password, shared_secret=shared_secret),
         )
         assert len(session.submitted) == 2
         assert session.submitted[0] == (
-            guard_code("AQIDBAUGBwgJCgsMDQ4PEA==", timestamp=1_700_000_060),
+            guard_code(shared_secret, timestamp=1_700_000_060),
             3,
         )
         assert session.submitted[1][0] != session.submitted[0][0]
+        assert password not in caplog.text
+        assert shared_secret not in caplog.text
+        assert session.submitted[0][0] not in caplog.text
+        assert "new-refresh" not in caplog.text
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_imported_mafile_can_supply_auto_guard_code(tmp_path: Path) -> None:
+    secret = base64.b64encode(b"01234567890123456789").decode("ascii")
+    path = tmp_path / "user.maFile"
+    path.write_text(
+        json.dumps({"account_name": "user", "steam_id": 42, "shared_secret": secret}),
+        encoding="utf-8",
+    )
+    imported = load_mafile(path)
+    session = FakeSession((3,))
+    store = MemoryStore()
+    client, _ = await _client(FakeAuth(session))
+    try:
+        result = await client.login_auto(
+            imported.account_name,
+            credentials=imported.credentials.with_fallback(LoginCredentials(password="p")),
+            store=store,
+        )
+        assert result.method == "credentials"
+        assert session.submitted and session.submitted[0][1] == 3
+        assert store.value is not None and store.value.shared_secret == secret
     finally:
         await client.aclose()
 

@@ -7,14 +7,15 @@ global modules. Run ``--check`` in CI to detect stale generated files.
 
 from __future__ import annotations
 
-import argparse
 import filecmp
 import re
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Annotated
 
 import grpc_tools
+import typer
 from grpc_tools import protoc
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,11 +30,41 @@ ROOT_SCHEMAS = (
     "steammessages_clientserver_appinfo.proto",
     "steammessages_clientserver_2.proto",
     "steammessages_auth.steamclient.proto",
+    "steammessages_twofactor.steamclient.proto",
     "steammessages_contentsystem.steamclient.proto",
+    "steammessages_publishedfile.steamclient.proto",
     "content_manifest.proto",
 )
 IMPORT = re.compile(r'^import(?:\s+public|\s+weak)?\s+"([^"]+)";', re.MULTILINE)
 GENERATED_IMPORT = re.compile(r"^import ([A-Za-z0-9_]+_pb2) as ", re.MULTILINE)
+
+
+def _twofactor_compat_fields(source: str) -> str:
+    """Restore two live Web API fields absent from SteamTracking's schema.
+
+    steamguard-cli's public service_twofactor.proto documents field 6 of the
+    add request and field 2 of the finalize response. Keep this small overlay
+    explicit so a future upstream schema change cannot silently alter the wire.
+    """
+    fields = (
+        (
+            "\toptional string device_identifier = 5;\n",
+            "\toptional string device_identifier = 5;\n\toptional string sms_phone_id = 6;\n",
+            "optional string sms_phone_id = 6;",
+        ),
+        (
+            "\toptional bool success = 1;\n\toptional uint64 server_time = 3;",
+            "\toptional bool success = 1;\n\toptional bool want_more = 2;\n"
+            "\toptional uint64 server_time = 3;",
+            "optional bool want_more = 2;",
+        ),
+    )
+    for old, new, present in fields:
+        if present not in source:
+            if old not in source:
+                raise RuntimeError("two-factor schema overlay no longer matches upstream")
+            source = source.replace(old, new, 1)
+    return source
 
 
 def dependencies(name: str, found: set[str]) -> None:
@@ -57,6 +88,8 @@ def generate(directory: Path) -> list[Path]:
         normalized = Path(temporary)
         for name in selected:
             source = (SCHEMAS / name).read_text(encoding="utf-8")
+            if name == "steammessages_twofactor.steamclient.proto":
+                source = _twofactor_compat_fields(source)
             source = source.replace(".steamclient.proto", "_steamclient.proto")
             (normalized / name.replace(".steamclient.proto", "_steamclient.proto")).write_text(
                 source, encoding="utf-8", newline="\n"
@@ -83,13 +116,10 @@ def generate(directory: Path) -> list[Path]:
     return generated
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args()
+def _run(*, check: bool) -> int:
     with tempfile.TemporaryDirectory(prefix="pysteam-proto-") as temporary:
         generated = generate(Path(temporary))
-        if args.check:
+        if check:
             stale = [
                 path.name
                 for path in generated
@@ -111,5 +141,21 @@ def main() -> int:
         return 0
 
 
+main = typer.Typer(
+    help="Generate Python classes from the pinned Steam protobuf schemas.", add_completion=False
+)
+
+
+@main.command()
+def generate_command(
+    check: Annotated[
+        bool, typer.Option("--check", help="Verify generated files are current.")
+    ] = False,
+) -> None:
+    result = _run(check=check)
+    if result:
+        raise typer.Exit(code=result)
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

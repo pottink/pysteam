@@ -39,6 +39,18 @@ class CredentialStoreError(SteamError):
     """An encrypted credential store could not be read or updated."""
 
 
+class ProfileError(SteamError):
+    """A saved account profile is missing or invalid."""
+
+
+class MaFileError(SteamError):
+    """A Steam Guard maFile could not be imported."""
+
+
+class EnrollmentError(SteamError):
+    """Steam Guard enrollment cannot safely continue."""
+
+
 class CDNError(SteamError):
     """A CDN manifest or content request failed."""
 

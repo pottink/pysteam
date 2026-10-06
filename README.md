@@ -1,73 +1,80 @@
-# pysteam
+<p align="center">
+  <img src="docs/assets/pysteam-banner.svg" alt="pysteam — Python-first Steam SDK" width="100%">
+</p>
 
-`pysteam-sdk` is an asyncio-first Python SDK for Steam. The import package is
-`pysteam`. It is a new API; it does not provide the legacy `steam` namespace.
+<p align="center">
+  <strong>Steam, from modern Python.</strong><br>
+  An asyncio SDK and CLI for Steam authentication and content preservation.
+</p>
 
-The project is under active development. The package version is pre-release and
-must not be used as proof of Steam service interoperability until the opt-in
-account smoke tests in `docs/release.md` have passed.
+<p align="center">
+  <img alt="Python 3.13 and 3.14" src="https://img.shields.io/badge/Python-3.13%20%7C%203.14-3973A8?logo=python&amp;logoColor=white">
+  <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-E6AE58">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-43BFAE">
+</p>
 
-## API
+`pysteam-sdk` installs as `pysteam`. It is an independent Steam SDK built on secure CM WebSockets and current protobuf messages. **The project is in alpha and is not published yet.**
 
-`SteamClient` manages a secure WebSocket CM connection, anonymous and
-refresh-token logon, Unified Messages, PICS, Game Coordinator packets, and
-access to `AuthenticationClient` and `CDNClient`. `WebAPIClient` offers both
-dictionary and `msgspec`-typed responses. `SteamID` and Steam Guard helpers
-are synchronous. See [examples](docs/examples.md) for usage.
-`SteamClient.login_auto()` can reuse or renew a refresh token, recover with
-credentials, and generate a Steam Guard device code from a supplied secret.
-It also restores that login after a CM reconnect. An encrypted file credential
-store is included for unattended applications.
-PICS includes access-token requests, bounded app-info VDF parsing, and
-branch-specific depot manifest ID extraction.
+## What you can do
 
-Python 3.13 and 3.14 are supported. Python 3.15 is checked in an advisory CI
-lane while interpreter and dependency compatibility are verified.
+| Area | Possibilities |
+| --- | --- |
+| **Explore Steam** | Inspect PICS app data, branches, depot manifests, and SteamIDs. |
+| **Sign in** | Use anonymous, password, refresh-token, or QR login; handle Steam Guard codes and interactive challenges. |
+| **Manage accounts** | Import a maFile, enroll an authenticator, and switch between encrypted saved profiles. |
+| **Preserve content** | Archive raw depot manifests and encrypted chunks; verify and extract offline. Import or export Steam backups. |
+| **Explore updates** | Snapshot app metadata, query Workshop, and archive Steam client packages. |
+| **Build integrations** | Call Unified Messages and WebAPI endpoints, or exchange Game Coordinator messages. |
 
-## Issue audit and release
+## Get started
 
-The kickoff snapshot in [issue-audit.json](docs/issue-audit.json) records all
-42 open ValvePython/steam issues and all 36 open SteamRE/SteamKit issues, plus
-15 relevant closed reports. Each entry records scope and regression coverage.
-The [release gate](docs/release.md) requires account-controlled live smoke
-tests before publication.
-
-## Development
+From this checkout, with [uv](https://docs.astral.sh/uv/) installed:
 
 ```powershell
-uv sync --group dev
-uv run python scripts/generate_protos.py --check
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run pytest
-uv build --no-sources
+git submodule update --init --recursive
+uv sync --locked --group dev
+uv run pysteam app 220
+uv run pysteam doctor
 ```
 
-The source schemas are pinned as a Git submodule under
-`vendor/steam-protobufs`. If they are absent after cloning, run
-`git submodule update --init --recursive` before generating.
-The source distribution includes the schema snapshot and its Unlicense notice
-so protobuf generation remains reproducible outside a Git checkout.
+These commands inspect public app data and test connectivity without an account.
 
-To advance the pin to the latest SteamTracking `master` and regenerate the
-Python classes, run `uv run python scripts/update_protos.py`. The updater
-requires a clean schema/generated-code checkout, verifies the generated files,
-and leaves the new pin and classes uncommitted for review. Then run the
-development checks above and inspect the changes before committing.
+## Use your account
 
-## Source provenance
+```powershell
+uv run pysteam init
+uv run pysteam account add YOUR_NAME --mafile "path/to/account.maFile"
+# Or: uv run pysteam account add YOUR_NAME --enroll
+uv run pysteam login
+uv run pysteam guard code
+uv run pysteam depot list 220 221
+uv run pysteam archive app 220
+uv run pysteam archive verify 221 MANIFEST_ID
+uv run pysteam archive extract 221 MANIFEST_ID --output restored
+```
 
-- Steam protocol schemas: SteamTracking/Protobufs, pinned by the submodule.
-  The upstream repository marks them Unlicense.
-- Historical API and issue reference: ValvePython/steam at
-  `26166e047b66a7be10bdf3c90e2e14de9283ab5a` (MIT).
-- Current behavior reference: SteamRE/SteamKit at
-  `84c990c3982eedb5abd733116b987c9870a0dccb` (LGPL-2.1-only).
-  `tests/fixtures/steamkit_client_hello.json` pins a wire-frame fixture
-  derived from its `MsgHdrProtoBuf.Serialize` header layout and the shared
-  protobuf schema.
-- Local project review: [earlier Steam projects](docs/prior-project-review.md).
+`init` creates a protected vault under `./.pysteam`; account setup offers it automatically. Later commands ask for its password once per run. Set `PYSTEAM_VAULT_PASSPHRASE` through a secret manager for unattended use. Existing `PYSTEAM_STORE_PASSPHRASE` remains an alias. The maFile backup password is separate. Use `vault change-password` to rotate the vault and registered archive key capsules. See the [account and archive guide](docs/examples.md#content-preservation).
 
-The Python implementation is original code. SteamKit implementation code is
-not copied into this package.
+## Use the SDK
+
+```python
+import asyncio
+from pysteam import SteamClient
+
+async def main() -> None:
+    async with SteamClient() as steam:
+        await steam.login_anonymous()
+        app = await steam.get_app_info(220)
+        print(app["appid"])
+
+asyncio.run(main())
+```
+
+See the [Python examples](docs/examples.md) for authentication, WebAPI, CDN, and Game Coordinator usage.
+
+## Project links
+
+- [CLI and SDK examples](docs/examples.md) · [protobuf updater](scripts/update_protos.py) · [issue audit](docs/issue-audit.json)
+- [Development and release checks](docs/release.md) · [source provenance](docs/prior-project-review.md) · [content references](docs/content-references.md)
+
+Licensed under [MIT](LICENSE). Independent of Valve and Steam.

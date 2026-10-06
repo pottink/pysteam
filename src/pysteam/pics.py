@@ -73,8 +73,8 @@ def _tokens(data: bytes) -> list[str]:
     return result
 
 
-def parse_app_vdf(data: bytes) -> dict[str, KVValue]:
-    """Decode a PICS text VDF appinfo buffer into bounded nested key/value data."""
+def parse_vdf_document(data: bytes) -> dict[str, dict[str, KVValue]]:
+    """Decode bounded text VDF, including signed multi-root update files."""
     tokens = _tokens(data)
     position = 0
 
@@ -100,12 +100,36 @@ def parse_app_vdf(data: bytes) -> dict[str, KVValue]:
                 obj[key] = value
         raise ProtocolError("PICS app-info has an unclosed object")
 
-    if len(tokens) < 3 or tokens[0].lower() != "appinfo" or tokens[1] != "{":
+    document: dict[str, dict[str, KVValue]] = {}
+    while position < len(tokens):
+        if (
+            position + 1 >= len(tokens)
+            or tokens[position] in ("{", "}")
+            or tokens[position + 1] != "{"
+            or tokens[position] in document
+        ):
+            raise ProtocolError("VDF has an invalid root object")
+        root = tokens[position]
+        position += 2
+        document[root] = read_object(1)
+    if not document:
+        raise ProtocolError("VDF has no root object")
+    return document
+
+
+def parse_vdf(data: bytes) -> tuple[str, dict[str, KVValue]]:
+    """Decode one bounded VDF root, rejecting extra roots."""
+    document = parse_vdf_document(data)
+    if len(document) != 1:
+        raise ProtocolError("VDF has multiple root objects")
+    return next(iter(document.items()))
+
+
+def parse_app_vdf(data: bytes) -> dict[str, KVValue]:
+    """Decode a PICS text VDF appinfo buffer into bounded nested key/value data."""
+    root, result = parse_vdf(data)
+    if root.casefold() != "appinfo":
         raise ProtocolError("PICS app-info has no appinfo root")
-    position = 2
-    result = read_object(1)
-    if position != len(tokens):
-        raise ProtocolError("PICS app-info has trailing data")
     return result
 
 

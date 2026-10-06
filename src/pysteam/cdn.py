@@ -13,7 +13,7 @@ import tempfile
 import zipfile
 import zlib
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
@@ -111,6 +111,7 @@ class DepotManifest:
     filenames_encrypted: bool
     files: tuple[DepotFile, ...]
     signature: bytes
+    raw: bytes = field(default=b"", repr=False)
 
     def file(self, name: str) -> DepotFile:
         wanted = _relative_name(name)
@@ -162,6 +163,8 @@ def parse_manifest(data: bytes, *, depot_key: bytes | None = None) -> DepotManif
         raise ValueError("depot key must be 32 bytes")
     files: list[DepotFile] = []
     for mapping in payload.mappings:
+        if len(mapping.sha_content) not in (0, 20):
+            raise CDNError("manifest file checksum has invalid length")
         name = (
             _decrypt_filename(mapping.filename, depot_key)
             if metadata.filenames_encrypted and depot_key is not None
@@ -174,10 +177,24 @@ def parse_manifest(data: bytes, *, depot_key: bytes | None = None) -> DepotManif
             link = _relative_name(link)
         elif link and depot_key is not None:
             link = _decrypt_filename(link, depot_key)
-        chunks = tuple(
-            DepotChunk(chunk.sha, chunk.crc, chunk.offset, chunk.cb_original, chunk.cb_compressed)
-            for chunk in mapping.chunks
-        )
+        chunks_list: list[DepotChunk] = []
+        for chunk in mapping.chunks:
+            if (
+                len(chunk.sha) != 20
+                or not 0 < chunk.cb_original <= _MAX_CHUNK
+                or not 32 <= chunk.cb_compressed <= _MAX_CHUNK
+            ):
+                raise CDNError("manifest chunk metadata is invalid")
+            chunks_list.append(
+                DepotChunk(
+                    chunk.sha,
+                    chunk.crc,
+                    chunk.offset,
+                    chunk.cb_original,
+                    chunk.cb_compressed,
+                )
+            )
+        chunks = tuple(chunks_list)
         files.append(
             DepotFile(name, mapping.size, mapping.sha_content, mapping.flags, chunks, link)
         )
@@ -187,18 +204,12 @@ def parse_manifest(data: bytes, *, depot_key: bytes | None = None) -> DepotManif
         bool(metadata.filenames_encrypted and depot_key is None),
         tuple(files),
         signature.signature,
+        data,
     )
 
 
 def _adler32_zero(data: bytes) -> int:
-    a = b = 0
-    for start in range(0, len(data), 5552):
-        for byte in data[start : start + 5552]:
-            a += byte
-            b += a
-        a %= 65521
-        b %= 65521
-    return (b << 16) | a
+    return zlib.adler32(data, 0) & 0xFFFFFFFF
 
 
 def _decompress_chunk(data: bytes, maximum: int) -> bytes:
@@ -267,6 +278,8 @@ def process_chunk(encrypted: bytes, key: bytes, chunk: DepotChunk) -> bytes:
     result = _decompress_chunk(clear, min(chunk.original_size, _MAX_CHUNK))
     if len(result) != chunk.original_size or _adler32_zero(result) != chunk.crc:
         raise CDNError("depot chunk length or checksum mismatch")
+    if hashlib.sha1(result).digest() != chunk.sha:
+        raise CDNError("depot chunk SHA-1 mismatch")
     return result
 
 
@@ -449,6 +462,21 @@ class CDNClient:
             yield clear
         if position != file.size or (file.sha and digest.digest() != file.sha):
             raise CDNError("depot file size or SHA-1 mismatch")
+
+    async def get_chunk(
+        self,
+        *,
+        server: str,
+        depot_id: int,
+        chunk: DepotChunk,
+        auth_token: str = "",
+    ) -> bytes:
+        origin = self._validate_server(server)
+        return await self._get(
+            f"{origin}/depot/{depot_id}/chunk/{chunk.sha.hex()}",
+            auth_token=auth_token,
+            limit=_MAX_CHUNK,
+        )
 
     async def download_file(
         self,

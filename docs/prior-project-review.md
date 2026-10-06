@@ -22,5 +22,6 @@ The old fork's gevent transport, WebAuth API, and application storage are not
 part of the new SDK. `steamctl`'s fixed Windows/English depot filtering,
 MongoDB/Redis caches, key persistence, and downloader orchestration are
 application choices. The SDK keeps manifest selection explicit by app,
-depot, and branch, with no implicit platform filter. Automatic login uses a
-pluggable encrypted credential store rather than `steamctl`'s account database.
+depot, and branch, with no implicit platform filter. Saved accounts use a
+secret-free profile registry and per-account encrypted stores rather than
+`steamctl`'s account database.

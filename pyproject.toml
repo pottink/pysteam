@@ -5,22 +5,27 @@ build-backend = "uv_build"
 [project]
 name = "pysteam-sdk"
 version = "0.1.0a0"
-description = "Async Python SDK for Steam CM, authentication, PICS, CDN, and Web API"
+description = "Async Python SDK for Steam authentication, content preservation, and Web API"
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "pysteam contributors"}]
-keywords = ["steam", "steamkit", "asyncio", "protobuf"]
+keywords = ["steam", "steamkit", "asyncio", "protobuf", "archive", "depot"]
 dependencies = [
     "cryptography>=46",
     "filelock>=3.16,<4",
     "httpx>=0.28.1,<1",
     "msgspec>=0.21.1,<1",
     "protobuf>=7.36,<8",
+    "rich>=15,<16",
+    "typer>=0.27.2,<1",
     "websockets>=17,<18",
     "zstandard>=0.25,<1",
 ]
+
+[project.scripts]
+pysteam = "pysteam.cli:main"
 
 [dependency-groups]
 dev = [

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">pysteam</title>
+  <desc id="desc">A dark blue banner with a mint network diagram and the words pysteam, Python-first Steam protocol tooling.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071624"/>
+      <stop offset="0.55" stop-color="#0C2534"/>
+      <stop offset="1" stop-color="#123B43"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#70E7D2"/>
+      <stop offset="1" stop-color="#48BFE3"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#45D6C2" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#45D6C2" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#8DDDD8" stroke-opacity="0.055"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="320" rx="20" fill="url(#background)"/>
+  <rect width="1200" height="320" rx="20" fill="url(#grid)"/>
+  <circle cx="955" cy="160" r="265" fill="url(#glow)"/>
+  <path d="M64 57h40" stroke="url(#accent)" stroke-width="5" stroke-linecap="round"/>
+  <text x="64" y="97" fill="#84B9C1" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="4">PYTHON-FIRST STEAM SDK</text>
+  <text x="59" y="205" fill="#F1FBFC" font-family="Segoe UI, Arial, sans-serif" font-size="93" font-weight="750" letter-spacing="-5">pysteam</text>
+  <text x="64" y="254" fill="#9CC8CF" font-family="Segoe UI, Arial, sans-serif" font-size="23">Connect. Authenticate. Explore. Build.</text>
+  <circle cx="960" cy="160" r="113" fill="none" stroke="#8EE9DD" stroke-opacity="0.18" stroke-width="1.5" stroke-dasharray="6 10"/>
+  <circle cx="960" cy="160" r="71" fill="#0E3540" stroke="url(#accent)" stroke-width="2"/>
+  <circle cx="960" cy="160" r="38" fill="none" stroke="#8DEEDD" stroke-width="2" stroke-opacity="0.55"/>
+  <path d="M924 173l22-22 20 12 30-31" fill="none" stroke="url(#accent)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="946" cy="151" r="5" fill="#EDFFFF"/>
+  <circle cx="966" cy="163" r="5" fill="#EDFFFF"/>
+  <circle cx="996" cy="132" r="5" fill="#EDFFFF"/>
+  <g fill="none" stroke="#73DDCD" stroke-opacity="0.5" stroke-width="2">
+    <path d="M910 67l-33-35-42 21"/>
+    <path d="M1042 74l45-27 45 26"/>
+    <path d="M1073 170l71 5 21-31"/>
+    <path d="M1023 242l42 47 50-8"/>
+    <path d="M882 233l-55 45-51-16"/>
+    <path d="M847 157l-68-8-21-39"/>
+  </g>
+  <g fill="#83E6D8">
+    <circle cx="835" cy="53" r="6"/>
+    <circle cx="877" cy="32" r="4"/>
+    <circle cx="1087" cy="47" r="6"/>
+    <circle cx="1132" cy="73" r="4"/>
+    <circle cx="1144" cy="175" r="6"/>
+    <circle cx="1165" cy="144" r="4"/>
+    <circle cx="1065" cy="289" r="6"/>
+    <circle cx="1115" cy="281" r="4"/>
+    <circle cx="827" cy="278" r="6"/>
+    <circle cx="776" cy="262" r="4"/>
+    <circle cx="779" cy="149" r="6"/>
+    <circle cx="758" cy="110" r="4"/>
+  </g>
+</svg>
