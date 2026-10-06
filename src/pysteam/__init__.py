@@ -23,6 +23,7 @@ from pysteam.errors import (
 )
 from pysteam.guard import confirmation_key, guard_code
 from pysteam.ids import SteamID
+from pysteam.pics import PICSAccessTokens, extract_manifest_ids, parse_app_vdf
 from pysteam.webapi import WebAPIClient
 
 __version__ = "0.1.0a0"
@@ -38,6 +39,7 @@ __all__ = [
     "DepotChunk",
     "DepotFile",
     "DepotManifest",
+    "PICSAccessTokens",
     "PICSInfo",
     "ProtocolError",
     "RequestTimeout",
@@ -49,7 +51,9 @@ __all__ = [
     "WebAPIClient",
     "WebAPIError",
     "confirmation_key",
+    "extract_manifest_ids",
     "guard_code",
+    "parse_app_vdf",
     "parse_manifest",
     "process_chunk",
 ]

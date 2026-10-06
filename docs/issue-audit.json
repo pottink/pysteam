@@ -224,10 +224,10 @@
       "url": "https://github.com/ValvePython/steam/issues/436",
       "title": "[BUG] manifests for some Steam apps are now dicts, not plain IDs, causing CDNClient.get_manifests to crash",
       "state": "open",
-      "capability": "CDN branch selection",
-      "reproduction_evidence": "First release accepts explicit manifest IDs; see source report",
-      "disposition": "later",
-      "regression_test": null,
+      "capability": "PICS/CDN manifest selection",
+      "reproduction_evidence": "Modern depot branch manifest value is a gid object rather than a scalar; see source report",
+      "disposition": "covered",
+      "regression_test": "tests/test_pics.py::test_modern_and_legacy_manifest_references",
       "independently_reproduced": false
     },
     {

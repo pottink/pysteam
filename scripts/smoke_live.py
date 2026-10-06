@@ -28,6 +28,9 @@ async def smoke(*, anonymous: bool) -> None:
         if 570 not in info.apps:
             raise RuntimeError("PICS did not return app 570")
         print("PICS app 570 succeeded")
+        if not await client.get_app_manifest_ids(570):
+            raise RuntimeError("PICS app 570 contains no public manifest IDs")
+        print("PICS manifest references succeeded")
         servers = await client.cdn.servers()
         if not servers:
             raise RuntimeError("CDN server discovery returned no servers")

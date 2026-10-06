@@ -73,7 +73,12 @@ VALVE = {
     ),
     442: ("legacy WebAuth", "later", "Legacy MobileWebAuth is excluded", None),
     439: ("legacy machine auth", "later", "Machine-auth handler is excluded", None),
-    436: ("CDN branch selection", "later", "First release accepts explicit manifest IDs", None),
+    436: (
+        "PICS/CDN manifest selection",
+        "covered",
+        "Modern depot branch manifest value is a gid object rather than a scalar",
+        "tests/test_pics.py::test_modern_and_legacy_manifest_references",
+    ),
     429: ("authenticator management", "later", "Adding authenticators is excluded", None),
     427: ("social messaging", "later", "Chat is outside first-release scope", None),
     424: ("matchmaking", "later", "ServerRules is outside first-release scope", None),

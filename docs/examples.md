@@ -15,6 +15,8 @@ async def main() -> None:
         await client.login_anonymous()
         info = await client.get_product_info(app_ids=[570])
         print(sorted(info.apps))
+        manifest_ids = await client.get_app_manifest_ids(570, branch="public")
+        print(manifest_ids)  # {depot_id: manifest_id}
 
 
 asyncio.run(main())
@@ -91,8 +93,9 @@ from pysteam import SteamClient
 
 
 async def download_owned_depot(
-    client: SteamClient, app_id: int, depot_id: int, manifest_id: int
+    client: SteamClient, app_id: int, depot_id: int
 ) -> None:
+    manifest_id = (await client.get_app_manifest_ids(app_id))[depot_id]
     server = (await client.cdn.servers())[0]
     depot_key = await client.cdn.get_depot_key(app_id, depot_id)
     manifest = await client.cdn.get_manifest(
@@ -110,6 +113,9 @@ The account must have access to the depot. If the CDN server requires an auth
 token, get one with `client.cdn.get_auth_token()` and pass `auth_token=` to the
 manifest and file methods. A completed download replaces the destination only
 after all chunks and the full file have passed integrity checks.
+For another branch, pass the same `branch=` to `get_app_manifest_ids()` and
+`get_manifest()`, along with `branch_password_hash=` to `get_manifest()` when
+Steam requires it.
 
 ## Game Coordinator
 

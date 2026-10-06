@@ -388,12 +388,20 @@ class CDNClient:
         depot_key: bytes | None = None,
         auth_token: str = "",
         request_code: int | None = None,
+        branch: str = "public",
+        branch_password_hash: str = "",
     ) -> DepotManifest:
         origin = self._validate_server(server)
         code = (
             request_code
             if request_code is not None
-            else await self.get_manifest_request_code(app_id, depot_id, manifest_id)
+            else await self.get_manifest_request_code(
+                app_id,
+                depot_id,
+                manifest_id,
+                branch=branch,
+                branch_password_hash=branch_password_hash,
+            )
         )
         suffix = f"/{code}" if code else ""
         url = f"{origin}/depot/{depot_id}/manifest/{manifest_id}/5{suffix}"

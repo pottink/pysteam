@@ -2,11 +2,11 @@
 
 ## Current status (2026-10-01)
 
-- Windows local checks pass on Python 3.13 and 3.14: 26 offline tests, Ruff,
+- Windows local checks pass on Python 3.13 and 3.14: 31 offline tests, Ruff,
   and mypy. Protobuf generation, issue-audit validation, package build, and
   isolated wheel import pass on Python 3.14.
-- Anonymous live checks passed for CM logon, PICS app 570, CDN server
-  discovery, and WebAPI server info.
+- Anonymous live checks passed for CM logon, PICS app 570 and its public
+  manifest references, CDN server discovery, and WebAPI server info.
 - Cross-platform CI has been configured but has not run because this local
   repository has no remote.
 - Dedicated-account credential, QR, refresh-token, GC, and CDN manifest/file

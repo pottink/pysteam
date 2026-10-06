@@ -14,6 +14,8 @@ refresh-token logon, Unified Messages, PICS, Game Coordinator packets, and
 access to `AuthenticationClient` and `CDNClient`. `WebAPIClient` offers both
 dictionary and `msgspec`-typed responses. `SteamID` and Steam Guard helpers
 are synchronous. See [examples](docs/examples.md) for usage.
+PICS includes access-token requests, bounded app-info VDF parsing, and
+branch-specific depot manifest ID extraction.
 
 Python 3.13 and 3.14 are supported. Python 3.15 is checked in an advisory CI
 lane while interpreter and dependency compatibility are verified.
@@ -55,6 +57,7 @@ so protobuf generation remains reproducible outside a Git checkout.
   `tests/fixtures/steamkit_client_hello.json` pins a wire-frame fixture
   derived from its `MsgHdrProtoBuf.Serialize` header layout and the shared
   protobuf schema.
+- Local project review: [earlier Steam projects](docs/prior-project-review.md).
 
 The Python implementation is original code. SteamKit implementation code is
 not copied into this package.
