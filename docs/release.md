@@ -11,9 +11,13 @@
 - Anonymous live checks passed for CM logon, PICS app data and manifest
   references, CDN server discovery, WebAPI server info, and Steam time sync.
   `pysteam doctor` and `pysteam app 220` also passed.
+- A manually run saved-profile check on 2026-10-06 reported successful
+  authenticated CM logon, PICS app 570 and manifest references, CDN server
+  discovery, and WebAPI server info on commit `71a1d12`. The account identity
+  is kept out of this public repository.
 - Multi-account profiles, vault migration, Steam Guard enrollment handoff,
-  authentication, and content tools have offline coverage. Dedicated-account
-  login, QR, GC, authenticated depot, and archive/restore checks remain pending.
+  authentication, and content tools have offline coverage. QR, GC,
+  authenticated depot, and archive/restore checks remain pending.
 - Anonymous depot-key access for a protected depot returned EResult 15, as
   expected; the CLI explains that an entitled account is needed.
 - The `pysteam-sdk` PyPI JSON endpoint returned HTTP 404 on this date. This is
@@ -39,8 +43,8 @@ The first public release is gated on all of the following:
    pytest, issue-audit validation, build, and isolated wheel import/CLI pass.
 3. Run the account and archive smoke procedures below with a separate Steam account
    controlled by the maintainer. Record date, tested SteamID, app/depot IDs,
-   outcome, and SDK commit, but never credentials, tokens, Guard secrets,
-   network packet bodies, or depot keys.
+   outcome, and SDK commit privately; do not commit account identity,
+   credentials, tokens, Guard secrets, network packet bodies, or depot keys.
 4. Verify portable offline extraction, SIS export and import, and Workshop
    content with controlled content on each supported platform.
 5. Resolve any confirmed first-release defect found by the issue audit or
