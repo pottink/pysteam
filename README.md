@@ -46,6 +46,12 @@ The source schemas are pinned as a Git submodule under
 The source distribution includes the schema snapshot and its Unlicense notice
 so protobuf generation remains reproducible outside a Git checkout.
 
+To advance the pin to the latest SteamTracking `master` and regenerate the
+Python classes, run `uv run python scripts/update_protos.py`. The updater
+requires a clean schema/generated-code checkout, verifies the generated files,
+and leaves the new pin and classes uncommitted for review. Then run the
+development checks above and inspect the changes before committing.
+
 ## Source provenance
 
 - Steam protocol schemas: SteamTracking/Protobufs, pinned by the submodule.
