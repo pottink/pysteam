@@ -1,0 +1,7 @@
+{
+  "steamkit_revision": "84c990c3982eedb5abd733116b987c9870a0dccb",
+  "reference": "SteamKit2/Base/Generated/SteamLanguageInternal.cs MsgHdrProtoBuf.Serialize and SteamTracking CMsgClientHello protobuf schema",
+  "emsg": 9805,
+  "protocol_version": 65581,
+  "packet_hex": "4d2600800000000008ad8004"
+}

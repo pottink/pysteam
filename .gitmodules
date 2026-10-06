@@ -1,0 +1,3 @@
+[submodule "vendor/steam-protobufs"]
+	path = vendor/steam-protobufs
+	url = https://github.com/SteamTracking/Protobufs.git
