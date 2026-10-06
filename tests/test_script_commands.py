@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 
 import typer
@@ -21,14 +22,21 @@ def _load_command(name: str) -> typer.Typer:
     return module.main
 
 
+def _plain_output(output: str) -> str:
+    return " ".join(re.sub(r"\x1b\[[0-9;]*m", "", output).split())
+
+
 def test_typer_rejects_conflicting_login_options(tmp_path: Path) -> None:
     mafile = tmp_path / "test.maFile"
     mafile.write_text("{}", encoding="utf-8")
     result = CliRunner().invoke(
-        _load_command("test_mafile_login"), [str(mafile), "--store", str(tmp_path / "store.bin")]
+        _load_command("test_mafile_login"),
+        [str(mafile), "--store", str(tmp_path / "store.bin")],
+        color=False,
+        terminal_width=200,
     )
     assert result.exit_code == 2
-    assert "--store requires --remember" in result.output
+    assert "--store requires --remember" in _plain_output(result.output)
 
 
 def test_typer_rejects_conflicting_enrollment_options(tmp_path: Path) -> None:
@@ -37,9 +45,11 @@ def test_typer_rejects_conflicting_enrollment_options(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         _load_command("enroll_guard"),
         ["--output", str(tmp_path / "out"), "--resume", str(mafile)],
+        color=False,
+        terminal_width=200,
     )
     assert result.exit_code == 2
-    assert "--output and --resume cannot be combined" in result.output
+    assert "--output and --resume cannot be combined" in _plain_output(result.output)
 
 
 def test_typer_requires_one_live_smoke_mode() -> None:

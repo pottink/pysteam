@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -22,8 +23,11 @@ def test_steamid_parse_and_help() -> None:
     assert result.exit_code == 0
     assert "76561197960265737" in result.output
     assert "Account ID" in result.output
-    assert runner.invoke(cli.main, ["depot", "download", "--help"]).exit_code == 0
-    assert "--file" in runner.invoke(cli.main, ["depot", "download", "--help"]).output
+    help_result = runner.invoke(
+        cli.main, ["depot", "download", "--help"], color=False, terminal_width=200
+    )
+    assert help_result.exit_code == 0
+    assert "--file" in re.sub(r"\x1b\[[0-9;]*m", "", help_result.output)
 
 
 def test_guard_code_import_never_displays_secret(

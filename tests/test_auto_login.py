@@ -404,6 +404,8 @@ async def test_encrypted_store_rejects_plaintext_symlink_and_loose_permissions(
     path = tmp_path / "accounts.bin"
     store = EncryptedFileCredentialStore(path, "passphrase")
     path.write_bytes(b'{"password":"plaintext"}')
+    if os.name != "nt":
+        path.chmod(0o600)
     with pytest.raises(CredentialStoreError, match="unsupported"):
         await store.load("one")
     path.unlink()
