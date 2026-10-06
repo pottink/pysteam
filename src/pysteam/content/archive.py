@@ -23,13 +23,13 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from filelock import FileLock
 
-from pysteam.cdn import DepotChunk, DepotFile, DepotManifest, parse_manifest, process_chunk
+from pysteam.accounts.profiles import ensure_private_directory
+from pysteam.content.cdn import DepotChunk, DepotFile, DepotManifest, parse_manifest, process_chunk
 from pysteam.errors import CDNError, CDNHTTPError, CredentialStoreError, TransportError
-from pysteam.profiles import ensure_private_directory
 
 if TYPE_CHECKING:
     from pysteam.client import SteamClient
-    from pysteam.workshop import WorkshopItem
+    from pysteam.content.workshop import WorkshopItem
 
 _ARCHIVE_MAGIC = b"PYSTEAM-ARCHIVE-1\0"
 _KEY_MAGIC = b"PYSTEAM-ARCHIVE-KEYS-1\0"

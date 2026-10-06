@@ -9,14 +9,14 @@ import stat
 import tempfile
 from pathlib import Path
 
-from pysteam.errors import ProfileError
-from pysteam.profiles import (
+from pysteam.accounts.profiles import (
     ProfileRegistry,
     SavedProfile,
     _restrict_windows_acl,
     default_profile_dir,
     legacy_profile_dir,
 )
+from pysteam.errors import ProfileError
 
 
 def _digest(path: Path) -> bytes:

@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 
 import pysteam.cli as cli
-from pysteam.archive import ArchiveRegistry, ArchiveStore
-from pysteam.credentials import EncryptedFileCredentialStore, LoginCredentials
+from pysteam.accounts.credentials import EncryptedFileCredentialStore, LoginCredentials
+from pysteam.accounts.profiles import ProfileRegistry, SavedProfile
+from pysteam.accounts.vault import Vault, vault_passphrase
+from pysteam.content.archive import ArchiveRegistry, ArchiveStore
 from pysteam.errors import CredentialStoreError
-from pysteam.profiles import ProfileRegistry, SavedProfile
-from pysteam.vault import Vault, vault_passphrase
 
 PASSWORD = "new-vault-password"
 

@@ -1,14 +1,6 @@
 """Modern async Steam SDK."""
 
-from pysteam.archive import (
-    ArchiveRecord,
-    ArchiveResult,
-    ArchiveStore,
-    ContentArchiver,
-    ManifestDiff,
-    WorkshopArchiveResult,
-)
-from pysteam.auth import (
+from pysteam.accounts.auth import (
     AccessTokenResult,
     AuthenticationClient,
     AuthenticationInteractionRequired,
@@ -18,7 +10,26 @@ from pysteam.auth import (
     GuardChallengeHandler,
     LoginResult,
 )
-from pysteam.cdn import (
+from pysteam.accounts.credentials import (
+    CredentialStore,
+    EncryptedFileCredentialStore,
+    LoginCredentials,
+)
+from pysteam.accounts.enrollment import GuardEnrollmentClient, PendingGuardEnrollment
+from pysteam.accounts.guard import confirmation_key, guard_code
+from pysteam.accounts.mafile import ImportedAuthenticator, load_mafile
+from pysteam.accounts.profiles import ProfileRegistry, SavedProfile, default_profile_dir
+from pysteam.accounts.vault import Vault
+from pysteam.client import PICSInfo, SteamClient
+from pysteam.content.archive import (
+    ArchiveRecord,
+    ArchiveResult,
+    ArchiveStore,
+    ContentArchiver,
+    ManifestDiff,
+    WorkshopArchiveResult,
+)
+from pysteam.content.cdn import (
     CDNClient,
     DepotChunk,
     DepotFile,
@@ -26,9 +37,13 @@ from pysteam.cdn import (
     parse_manifest,
     process_chunk,
 )
-from pysteam.client import PICSInfo, SteamClient
-from pysteam.clientpackages import ClientArchiveResult, ClientPackage, ClientPackageArchiver
-from pysteam.credentials import CredentialStore, EncryptedFileCredentialStore, LoginCredentials
+from pysteam.content.client_packages import (
+    ClientArchiveResult,
+    ClientPackage,
+    ClientPackageArchiver,
+)
+from pysteam.content.pics import PICSAccessTokens, extract_manifest_ids, parse_app_vdf, parse_vdf
+from pysteam.content.workshop import WorkshopClient, WorkshopItem, WorkshopQuery
 from pysteam.errors import (
     AuthenticationError,
     CDNError,
@@ -44,15 +59,8 @@ from pysteam.errors import (
     TransportError,
     WebAPIError,
 )
-from pysteam.guard import confirmation_key, guard_code
-from pysteam.guard_enrollment import GuardEnrollmentClient, PendingGuardEnrollment
 from pysteam.ids import SteamID
-from pysteam.mafile import ImportedAuthenticator, load_mafile
-from pysteam.pics import PICSAccessTokens, extract_manifest_ids, parse_app_vdf, parse_vdf
-from pysteam.profiles import ProfileRegistry, SavedProfile, default_profile_dir
-from pysteam.vault import Vault
 from pysteam.webapi import WebAPIClient
-from pysteam.workshop import WorkshopClient, WorkshopItem, WorkshopQuery
 
 __version__ = "0.1.0a0"
 

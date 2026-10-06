@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
 
 from pysteam import CDNClient, CDNError, CDNHTTPError, DepotChunk, parse_manifest, process_chunk
-from pysteam.cdn import _decompress_chunk
+from pysteam.content.cdn import _decompress_chunk
 from pysteam.proto import steammessages_contentsystem_steamclient_pb2 as content_proto
 from pysteam.proto.content_manifest_pb2 import (
     ContentManifestMetadata,

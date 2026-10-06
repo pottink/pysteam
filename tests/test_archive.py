@@ -24,12 +24,12 @@ from pysteam import (
     WorkshopItem,
     parse_manifest,
 )
+from pysteam.accounts.vault import Vault
 from pysteam.proto.content_manifest_pb2 import (
     ContentManifestMetadata,
     ContentManifestPayload,
     ContentManifestSignature,
 )
-from pysteam.vault import Vault
 
 KEY = bytes(range(32))
 PASSWORD = "a-strong-vault-password"
@@ -214,7 +214,7 @@ async def test_workshop_external_https_redirect(
     original = httpx.AsyncClient
     transport = httpx.MockTransport(respond)
     monkeypatch.setattr(
-        "pysteam.archive.httpx.AsyncClient",
+        "pysteam.content.archive.httpx.AsyncClient",
         lambda **kwargs: original(transport=transport, **kwargs),
     )
     steam = FakeSteam(FakeCDN(_manifest()[0], b""))
@@ -249,7 +249,7 @@ async def test_cpu_process_worker_verifies_chunk(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_memory_budget_reserves_whole_chunks() -> None:
-    from pysteam.archive import _MemoryBudget
+    from pysteam.content.archive import _MemoryBudget
 
     budget = _MemoryBudget(64)
     active = 0
@@ -311,7 +311,7 @@ def test_archive_offline_cli_round_trip(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 def test_archive_rejects_nonportable_paths_and_oversized_catalog(tmp_path: Path) -> None:
-    from pysteam.archive import _extraction_parts
+    from pysteam.content.archive import _extraction_parts
 
     for name in ("CON.txt", "folder/name.", "folder/name ", "folder/a?b"):
         with pytest.raises(CDNError, match="non-portable"):

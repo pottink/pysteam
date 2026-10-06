@@ -23,7 +23,7 @@ from pysteam import (
     guard_code,
     load_mafile,
 )
-from pysteam.auth import AuthenticationClient
+from pysteam.accounts.auth import AuthenticationClient
 from pysteam.proto import steammessages_auth_steamclient_pb2 as auth_proto
 
 
@@ -368,7 +368,7 @@ async def test_steam_time_query_midpoint(monkeypatch: pytest.MonkeyPatch) -> Non
         assert request.url.path.endswith("/ITwoFactorService/QueryTime/v1/")
         return httpx.Response(200, json={"response": {"server_time": 130}})
 
-    monkeypatch.setattr("pysteam.auth.time.time", lambda: 100.0)
+    monkeypatch.setattr("pysteam.accounts.auth.time.time", lambda: 100.0)
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
         client = SteamClient(http=http)
         assert await AuthenticationClient(client).steam_time_offset() == 30.0

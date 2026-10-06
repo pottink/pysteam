@@ -19,7 +19,12 @@ from google.protobuf.message import DecodeError, Message
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
-from pysteam.credentials import CredentialStore, EncryptedFileCredentialStore, LoginCredentials
+from pysteam.accounts.credentials import (
+    CredentialStore,
+    EncryptedFileCredentialStore,
+    LoginCredentials,
+)
+from pysteam.content.pics import KVValue, PICSAccessTokens, extract_manifest_ids, parse_app_vdf
 from pysteam.errors import (
     AuthenticationError,
     ProfileError,
@@ -29,7 +34,6 @@ from pysteam.errors import (
     SteamResultError,
     TransportError,
 )
-from pysteam.pics import KVValue, PICSAccessTokens, extract_manifest_ids, parse_app_vdf
 from pysteam.proto import enums_clientserver_pb2 as emsg
 from pysteam.proto.steammessages_base_pb2 import CMsgProtoBufHeader
 from pysteam.proto.steammessages_clientserver_2_pb2 import CMsgGCClient
@@ -56,9 +60,9 @@ from pysteam.protocol import (
 )
 
 if TYPE_CHECKING:
-    from pysteam.auth import AuthenticationClient, GuardChallengeHandler, LoginResult
-    from pysteam.cdn import CDNClient
-    from pysteam.workshop import WorkshopClient
+    from pysteam.accounts.auth import AuthenticationClient, GuardChallengeHandler, LoginResult
+    from pysteam.content.cdn import CDNClient
+    from pysteam.content.workshop import WorkshopClient
 
 _LOG = logging.getLogger(__name__)
 _T = TypeVar("_T", bound=Message)
@@ -150,7 +154,7 @@ class SteamClient:
     @property
     def auth(self) -> AuthenticationClient:
         if self._auth is None:
-            from pysteam.auth import AuthenticationClient
+            from pysteam.accounts.auth import AuthenticationClient
 
             self._auth = AuthenticationClient(self)
         return self._auth
@@ -158,7 +162,7 @@ class SteamClient:
     @property
     def cdn(self) -> CDNClient:
         if self._cdn is None:
-            from pysteam.cdn import CDNClient
+            from pysteam.content.cdn import CDNClient
 
             self._cdn = CDNClient(self, http=self._http)
         return self._cdn
@@ -166,7 +170,7 @@ class SteamClient:
     @property
     def workshop(self) -> WorkshopClient:
         if self._workshop is None:
-            from pysteam.workshop import WorkshopClient
+            from pysteam.content.workshop import WorkshopClient
 
             self._workshop = WorkshopClient(self)
         return self._workshop
@@ -425,7 +429,7 @@ class SteamClient:
     ) -> None:
         if not refresh_token or not account_name:
             raise ValueError("refresh token and account name are required")
-        from pysteam.auth import _steam_id_from_jwt
+        from pysteam.accounts.auth import _steam_id_from_jwt
 
         resolved_id = steam_id or _steam_id_from_jwt(refresh_token)
         await self._logon_refresh_token(refresh_token, resolved_id, account_name)
@@ -511,8 +515,8 @@ class SteamClient:
         This is opt-in; constructing a SteamClient never reads local profiles.
         The SDK does not prompt for a missing encryption passphrase.
         """
-        from pysteam.profiles import ProfileRegistry
-        from pysteam.vault import Vault, vault_passphrase
+        from pysteam.accounts.profiles import ProfileRegistry
+        from pysteam.accounts.vault import Vault, vault_passphrase
 
         profile = ProfileRegistry(profile_dir).select(account_name)
         secret = vault_passphrase(passphrase)
@@ -544,14 +548,14 @@ class SteamClient:
         store: CredentialStore | None,
         on_challenge: GuardChallengeHandler | None,
     ) -> LoginResult:
-        from pysteam.auth import (
+        from pysteam.accounts.auth import (
             AuthenticationInteractionRequired,
             AuthTokens,
             GuardChallenge,
             LoginResult,
             _steam_id_from_jwt,
         )
-        from pysteam.guard import guard_code
+        from pysteam.accounts.guard import guard_code
 
         stored = await store.load(account_name) if store is not None else None
         supplied = credentials or LoginCredentials()
