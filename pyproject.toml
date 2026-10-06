@@ -14,6 +14,7 @@ authors = [{name = "pysteam contributors"}]
 keywords = ["steam", "steamkit", "asyncio", "protobuf"]
 dependencies = [
     "cryptography>=46",
+    "filelock>=3.16,<4",
     "httpx>=0.28.1,<1",
     "msgspec>=0.21.1,<1",
     "protobuf>=7.36,<8",

@@ -35,6 +35,10 @@ class AuthenticationError(SteamResultError):
     """An authentication operation returned a non-OK EResult."""
 
 
+class CredentialStoreError(SteamError):
+    """An encrypted credential store could not be read or updated."""
+
+
 class CDNError(SteamError):
     """A CDN manifest or content request failed."""
 

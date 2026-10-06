@@ -9,17 +9,42 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from pysteam import SteamClient, WebAPIClient
+from pysteam import EncryptedFileCredentialStore, LoginCredentials, SteamClient, WebAPIClient
 
 
-async def smoke(*, anonymous: bool) -> None:
-    token = None if anonymous else os.environ.get("PYSTEAM_TEST_REFRESH_TOKEN")
-    if not anonymous and not token:
+async def smoke(*, anonymous: bool, automatic: bool = False) -> None:
+    token = None if anonymous or automatic else os.environ.get("PYSTEAM_TEST_REFRESH_TOKEN")
+    if not anonymous and not automatic and not token:
         raise RuntimeError("PYSTEAM_TEST_REFRESH_TOKEN is required")
     async with SteamClient(timeout=10, auto_reconnect=False) as client:
         if anonymous:
             await client.login_anonymous()
             print("Anonymous CM logon succeeded")
+        elif automatic:
+            required = (
+                "PYSTEAM_TEST_USERNAME",
+                "PYSTEAM_TEST_PASSWORD",
+                "PYSTEAM_TEST_SHARED_SECRET",
+                "PYSTEAM_TEST_STORE_PASSPHRASE",
+            )
+            if any(not os.environ.get(name) for name in required):
+                raise RuntimeError("automatic login smoke environment is incomplete")
+            with tempfile.TemporaryDirectory(prefix="pysteam-auth-smoke-") as directory:
+                store = EncryptedFileCredentialStore(
+                    Path(directory) / "credentials.bin",
+                    os.environ["PYSTEAM_TEST_STORE_PASSPHRASE"],
+                )
+                result = await client.login_auto(
+                    os.environ["PYSTEAM_TEST_USERNAME"],
+                    credentials=LoginCredentials(
+                        password=os.environ["PYSTEAM_TEST_PASSWORD"],
+                        shared_secret=os.environ["PYSTEAM_TEST_SHARED_SECRET"],
+                    ),
+                    store=store,
+                )
+                if not await store.load(os.environ["PYSTEAM_TEST_USERNAME"]):
+                    raise RuntimeError("automatic login did not save credentials")
+                print(f"Automatic CM logon succeeded for SteamID {result.tokens.steam_id}")
         else:
             assert token is not None
             await client.logon(token)
@@ -81,9 +106,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--i-control-account", action="store_true")
+    mode.add_argument("--auto-login", action="store_true")
     mode.add_argument("--anonymous", action="store_true")
     arguments = parser.parse_args()
-    asyncio.run(smoke(anonymous=arguments.anonymous))
+    asyncio.run(smoke(anonymous=arguments.anonymous, automatic=arguments.auto_login))
 
 
 if __name__ == "__main__":

@@ -14,6 +14,10 @@ refresh-token logon, Unified Messages, PICS, Game Coordinator packets, and
 access to `AuthenticationClient` and `CDNClient`. `WebAPIClient` offers both
 dictionary and `msgspec`-typed responses. `SteamID` and Steam Guard helpers
 are synchronous. See [examples](docs/examples.md) for usage.
+`SteamClient.login_auto()` can reuse or renew a refresh token, recover with
+credentials, and generate a Steam Guard device code from a supplied secret.
+It also restores that login after a CM reconnect. An encrypted file credential
+store is included for unattended applications.
 PICS includes access-token requests, bounded app-info VDF parsing, and
 branch-specific depot manifest ID extraction.
 

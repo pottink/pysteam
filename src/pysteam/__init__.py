@@ -1,6 +1,15 @@
 """Modern async Steam SDK."""
 
-from pysteam.auth import AuthenticationClient, AuthSession, AuthTokens
+from pysteam.auth import (
+    AccessTokenResult,
+    AuthenticationClient,
+    AuthenticationInteractionRequired,
+    AuthSession,
+    AuthTokens,
+    GuardChallenge,
+    GuardChallengeHandler,
+    LoginResult,
+)
 from pysteam.cdn import (
     CDNClient,
     DepotChunk,
@@ -10,10 +19,12 @@ from pysteam.cdn import (
     process_chunk,
 )
 from pysteam.client import PICSInfo, SteamClient
+from pysteam.credentials import CredentialStore, EncryptedFileCredentialStore, LoginCredentials
 from pysteam.errors import (
     AuthenticationError,
     CDNError,
     CDNHTTPError,
+    CredentialStoreError,
     ProtocolError,
     RequestTimeout,
     SteamError,
@@ -29,16 +40,25 @@ from pysteam.webapi import WebAPIClient
 __version__ = "0.1.0a0"
 
 __all__ = [
+    "AccessTokenResult",
     "AuthSession",
     "AuthTokens",
     "AuthenticationClient",
     "AuthenticationError",
+    "AuthenticationInteractionRequired",
     "CDNClient",
     "CDNError",
     "CDNHTTPError",
+    "CredentialStore",
+    "CredentialStoreError",
     "DepotChunk",
     "DepotFile",
     "DepotManifest",
+    "EncryptedFileCredentialStore",
+    "GuardChallenge",
+    "GuardChallengeHandler",
+    "LoginCredentials",
+    "LoginResult",
     "PICSAccessTokens",
     "PICSInfo",
     "ProtocolError",
