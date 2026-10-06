@@ -7,13 +7,21 @@ import base64
 import binascii
 import json
 import platform
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from google.protobuf.message import Message
 
-from pysteam.errors import AuthenticationError, ProtocolError, RequestTimeout, SteamResultError
+from pysteam.errors import (
+    AuthenticationError,
+    ProtocolError,
+    RequestTimeout,
+    SteamError,
+    SteamResultError,
+)
 from pysteam.proto import enums_pb2
 from pysteam.proto import steammessages_auth_steamclient_pb2 as auth_proto
 
@@ -51,6 +59,37 @@ class AuthTokens:
     guard_data: str = field(repr=False, default="")
 
 
+@dataclass(frozen=True, slots=True)
+class AccessTokenResult:
+    access_token: str = field(repr=False)
+    refresh_token: str = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class LoginResult:
+    method: Literal["refresh_token", "credentials"]
+    tokens: AuthTokens = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class GuardChallenge:
+    confirmation_type: int
+    associated_message: str
+    session: AuthSession = field(repr=False)
+
+
+type GuardChallengeHandler = Callable[[GuardChallenge], Awaitable[str | None]]
+
+
+class AuthenticationInteractionRequired(SteamError):
+    """A live auth session needs an email code or user approval."""
+
+    def __init__(self, session: AuthSession, confirmation_type: int) -> None:
+        self.session = session
+        self.confirmation_type = confirmation_type
+        super().__init__("Steam Guard requires account-owner interaction")
+
+
 @dataclass(slots=True)
 class AuthSession:
     """A credential or QR session awaiting Steam Guard approval."""
@@ -62,6 +101,7 @@ class AuthSession:
     allowed_confirmations: tuple[int, ...]
     challenge_url: str | None = field(repr=False, default=None)
     steam_id: int | None = None
+    confirmation_messages: tuple[str, ...] = ()
 
     async def submit_guard_code(self, code: str, *, code_type: int) -> None:
         if not code or code_type not in (
@@ -197,6 +237,9 @@ class AuthenticationClient:
             response.interval,
             tuple(item.confirmation_type for item in response.allowed_confirmations),
             steam_id=response.steamid,
+            confirmation_messages=tuple(
+                item.associated_message for item in response.allowed_confirmations
+            ),
         )
 
     async def begin_qr(self, *, device_name: str | None = None) -> AuthSession:
@@ -221,17 +264,49 @@ class AuthenticationClient:
             response.interval,
             tuple(item.confirmation_type for item in response.allowed_confirmations),
             challenge_url=response.challenge_url,
+            confirmation_messages=tuple(
+                item.associated_message for item in response.allowed_confirmations
+            ),
         )
 
-    async def generate_access_token(
-        self, refresh_token: str, *, steam_id: int | None = None
-    ) -> str:
+    async def steam_time_offset(self) -> float:
+        """Estimate Steam's clock offset using the midpoint of a QueryTime call."""
+        from pysteam.webapi import WebAPIClient
+
+        start = time.time()
+        result = await WebAPIClient(http=self._client._http).call(
+            "ITwoFactorService", "QueryTime", http_method="POST"
+        )
+        end = time.time()
+        server_time = result.get("server_time")
+        if not isinstance(server_time, (str, int)) or isinstance(server_time, bool):
+            raise ProtocolError("Steam time response is invalid")
+        try:
+            timestamp = int(server_time)
+        except (TypeError, ValueError) as exc:
+            raise ProtocolError("Steam time response is invalid") from exc
+        if timestamp <= 0:
+            raise ProtocolError("Steam time response is invalid")
+        return timestamp - (start + end) / 2
+
+    async def generate_access_token_result(
+        self,
+        refresh_token: str,
+        *,
+        steam_id: int | None = None,
+        allow_renewal: bool = False,
+    ) -> AccessTokenResult:
         if not refresh_token:
             raise ValueError("refresh token is empty")
         resolved_id = steam_id or _steam_id_from_jwt(refresh_token)
         request = auth_proto.CAuthentication_AccessToken_GenerateForApp_Request(
             steamid=resolved_id,
             refresh_token=refresh_token,
+            renewal_type=(
+                auth_proto.k_ETokenRenewalType_Allow
+                if allow_renewal
+                else auth_proto.k_ETokenRenewalType_None
+            ),
         )
         response = await self._call(
             "GenerateAccessTokenForApp",
@@ -240,4 +315,10 @@ class AuthenticationClient:
         )
         if not response.access_token:
             raise ProtocolError("Steam did not return an access token")
-        return response.access_token
+        return AccessTokenResult(response.access_token, response.refresh_token or refresh_token)
+
+    async def generate_access_token(
+        self, refresh_token: str, *, steam_id: int | None = None
+    ) -> str:
+        result = await self.generate_access_token_result(refresh_token, steam_id=steam_id)
+        return result.access_token

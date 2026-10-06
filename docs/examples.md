@@ -53,6 +53,57 @@ For QR, call `await client.auth.begin_qr()` and display
 Steam may require another Guard step; handle only the confirmation types
 listed by the session.
 
+## Automatic login with encrypted credentials
+
+```python
+import asyncio
+import os
+from pathlib import Path
+
+from pysteam import (
+    EncryptedFileCredentialStore, GuardChallenge, LoginCredentials, SteamClient,
+)
+
+
+async def on_challenge(challenge: GuardChallenge) -> str | None:
+    if challenge.confirmation_type in (2, 3):  # Email or device code
+        return await asyncio.to_thread(input, "Steam Guard code: ")
+    if challenge.confirmation_type in (4, 5):  # Mobile or email approval
+        print("Approve the pending Steam sign-in")
+        return None
+    raise RuntimeError("Unsupported Steam Guard confirmation")
+
+
+async def main() -> None:
+    store = EncryptedFileCredentialStore(
+        Path(os.environ["PYSTEAM_STORE_PATH"]),
+        os.environ["PYSTEAM_STORE_PASSPHRASE"],
+    )
+    async with SteamClient() as client:
+        result = await client.login_auto(
+            os.environ["STEAM_USERNAME"],
+            credentials=LoginCredentials(
+                password=os.environ.get("STEAM_PASSWORD"),
+                shared_secret=os.environ.get("STEAM_SHARED_SECRET"),
+            ),
+            store=store,
+            on_challenge=on_challenge,
+        )
+        print("Authenticated SteamID:", result.tokens.steam_id)
+
+
+asyncio.run(main())
+```
+
+After the first login, the store can supply the saved credentials and refresh
+token without `STEAM_PASSWORD` or `STEAM_SHARED_SECRET` in the environment.
+The application supplies the encryption passphrase at startup; it is never
+written into the credential file. Omit `store=` to manage tokens and Guard
+data yourself through `LoginResult.tokens`. If human approval is needed and
+`on_challenge` is absent, `AuthenticationInteractionRequired` contains the
+live `AuthSession` for manual handling. Mobile app approvals are never
+performed automatically.
+
 ## Web API with a typed response
 
 ```python

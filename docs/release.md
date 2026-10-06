@@ -2,11 +2,12 @@
 
 ## Current status (2026-10-01)
 
-- Windows local checks pass on Python 3.13 and 3.14: 31 offline tests, Ruff,
+- Windows local checks pass on Python 3.13 and 3.14: 44 offline tests, Ruff,
   and mypy. Protobuf generation, issue-audit validation, package build, and
   isolated wheel import pass on Python 3.14.
 - Anonymous live checks passed for CM logon, PICS app 570 and its public
-  manifest references, CDN server discovery, and WebAPI server info.
+  manifest references, CDN server discovery, and WebAPI server info. Steam
+  time synchronization responded successfully.
 - Cross-platform CI has been configured but has not run because this local
   repository has no remote.
 - Dedicated-account credential, QR, refresh-token, GC, and CDN manifest/file
@@ -51,6 +52,13 @@ For a depot the account owns, set the optional app/depot/manifest variables
 to download and verify a sample. If the CDN needs an auth token, set
 `PYSTEAM_TEST_CDN_AUTH=1`. The script discards the sample file after checking
 it. Inspect exception types and Steam result codes without recording secrets.
+
+For automatic Steam Guard login, use a separate account with a known shared
+secret and supply `PYSTEAM_TEST_USERNAME`, `PYSTEAM_TEST_PASSWORD`,
+`PYSTEAM_TEST_SHARED_SECRET`, and `PYSTEAM_TEST_STORE_PASSPHRASE` through a
+secret manager. Run `uv run python scripts/smoke_live.py --auto-login`. The
+encrypted test store is created in a temporary directory and removed after
+the login. This opt-in procedure has not yet been run.
 
 Do not publish from CI automatically. The 3.15 preview lane is advisory until
 the final interpreter and dependencies are verified and the supported-version

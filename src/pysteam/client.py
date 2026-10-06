@@ -7,6 +7,7 @@ import contextlib
 import logging
 import platform
 import random
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -17,9 +18,12 @@ from google.protobuf.message import DecodeError, Message
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
+from pysteam.credentials import CredentialStore, LoginCredentials
 from pysteam.errors import (
+    AuthenticationError,
     ProtocolError,
     RequestTimeout,
+    SteamError,
     SteamResultError,
     TransportError,
 )
@@ -49,7 +53,7 @@ from pysteam.protocol import (
 )
 
 if TYPE_CHECKING:
-    from pysteam.auth import AuthenticationClient
+    from pysteam.auth import AuthenticationClient, GuardChallengeHandler, LoginResult
     from pysteam.cdn import CDNClient
 
 _LOG = logging.getLogger(__name__)
@@ -102,6 +106,10 @@ class SteamClient:
         self._resume_anonymous = False
         self._resume_token: str | None = None
         self._resume_steam_id: int | None = None
+        self._resume_auto: (
+            tuple[str, LoginCredentials, CredentialStore | None, GuardChallengeHandler | None]
+            | None
+        ) = None
         self.last_session_error: Exception | None = None
         self._pending: dict[int, asyncio.Queue[Packet | Exception]] = {}
         self._emsg_waiters: dict[int, asyncio.Future[Packet]] = {}
@@ -228,6 +236,7 @@ class SteamClient:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._reauth_task
         self._resume_token = None
+        self._resume_auto = None
         receiver = self._receiver
         if receiver is not None:
             receiver.cancel()
@@ -378,6 +387,7 @@ class SteamClient:
         self._resume_anonymous = True
         self._resume_token = None
         self._resume_steam_id = None
+        self._resume_auto = None
         self.last_session_error = None
 
     async def logon(self, refresh_token: str, *, steam_id: int | None = None) -> None:
@@ -387,20 +397,206 @@ class SteamClient:
 
         resolved_id = steam_id or _steam_id_from_jwt(refresh_token)
         access_token = await self.auth.generate_access_token(refresh_token, steam_id=resolved_id)
+        await self._logon_access_token(access_token, refresh_token, resolved_id)
+        self._resume_auto = None
+
+    async def _logon_access_token(
+        self, access_token: str, refresh_token: str, steam_id: int
+    ) -> None:
         body = CMsgClientLogon(protocol_version=65581, access_token=access_token)
         body.client_language = "english"
         body.client_os_type = _os_type() & 0xFFFFFFFF
         body.cell_id = self.cell_id
-        body.client_supplied_steam_id = resolved_id
+        body.client_supplied_steam_id = steam_id
         packet = await self._wait_for_emsg(
             emsg.k_EMsgClientLogOnResponse,
-            self.send(emsg.k_EMsgClientLogon, body, steam_id=resolved_id, session_id=0),
+            self.send(emsg.k_EMsgClientLogon, body, steam_id=steam_id, session_id=0),
         )
         self._accept_logon(packet)
         self._resume_anonymous = False
         self._resume_token = refresh_token
-        self._resume_steam_id = resolved_id
+        self._resume_steam_id = steam_id
         self.last_session_error = None
+
+    async def login_auto(
+        self,
+        account_name: str,
+        *,
+        credentials: LoginCredentials | None = None,
+        store: CredentialStore | None = None,
+        on_challenge: GuardChallengeHandler | None = None,
+        timeout: float = 180.0,
+    ) -> LoginResult:
+        """Log on using a refresh token or credentials and an allowed Guard method."""
+        if not account_name or timeout <= 0:
+            raise ValueError("account name and positive timeout are required")
+        try:
+            async with asyncio.timeout(timeout):
+                result = await self._login_auto(account_name, credentials, store, on_challenge)
+                supplied = credentials or LoginCredentials()
+                self._resume_auto = (
+                    account_name,
+                    LoginCredentials(
+                        supplied.password,
+                        supplied.shared_secret,
+                        result.tokens.refresh_token,
+                        result.tokens.steam_id,
+                        result.tokens.guard_data,
+                    ),
+                    store,
+                    on_challenge,
+                )
+                return result
+        except TimeoutError as exc:
+            raise RequestTimeout("automatic login timed out") from exc
+
+    async def _login_auto(
+        self,
+        account_name: str,
+        credentials: LoginCredentials | None,
+        store: CredentialStore | None,
+        on_challenge: GuardChallengeHandler | None,
+    ) -> LoginResult:
+        from pysteam.auth import (
+            AuthenticationInteractionRequired,
+            AuthTokens,
+            GuardChallenge,
+            LoginResult,
+            _steam_id_from_jwt,
+        )
+        from pysteam.guard import guard_code
+
+        stored = await store.load(account_name) if store is not None else None
+        supplied = credentials or LoginCredentials()
+        material = supplied.with_fallback(stored)
+
+        token_failure: Exception | None = None
+        if material.refresh_token:
+            try:
+                steam_id = material.steam_id or _steam_id_from_jwt(material.refresh_token)
+            except ProtocolError as exc:
+                token_failure = exc
+            else:
+                try:
+                    result = await self.auth.generate_access_token_result(
+                        material.refresh_token, steam_id=steam_id, allow_renewal=True
+                    )
+                    renewed = LoginCredentials(
+                        material.password,
+                        material.shared_secret,
+                        result.refresh_token,
+                        steam_id,
+                        material.guard_data,
+                    )
+                    if store is not None:
+                        await store.save(account_name, renewed)
+                    await self._logon_access_token(
+                        result.access_token, result.refresh_token, steam_id
+                    )
+                    refresh_tokens = AuthTokens(
+                        steam_id,
+                        account_name,
+                        result.refresh_token,
+                        result.access_token,
+                        material.guard_data or "",
+                    )
+                    return LoginResult("refresh_token", refresh_tokens)
+                except (AuthenticationError, SteamResultError) as exc:
+                    if exc.eresult not in {5, 26, 27}:
+                        raise
+                    token_failure = exc
+
+        if not material.password:
+            if token_failure is not None:
+                raise token_failure
+            raise ValueError("a password or refresh token is required")
+        session = await self.auth.begin_credentials(
+            account_name,
+            material.password,
+            guard_data=material.guard_data or "",
+            remember_login=True,
+        )
+        credential_tokens = await session.poll()
+        if credential_tokens is None:
+            confirmations = session.allowed_confirmations
+            device = 3  # EAuthSessionGuardType.DeviceCode
+            email = 2  # EAuthSessionGuardType.EmailCode
+            if 1 in confirmations:  # None
+                pass
+            elif device in confirmations and material.shared_secret:
+                try:
+                    offset = await self.auth.steam_time_offset()
+                except (SteamError, ValueError):
+                    offset = 0.0
+                timestamp = int(time.time() + offset)
+                try:
+                    await session.submit_guard_code(
+                        guard_code(material.shared_secret, timestamp=timestamp), code_type=device
+                    )
+                except AuthenticationError as exc:
+                    if exc.eresult != 88:  # TwoFactorCodeMismatch
+                        raise
+                    delay = 30 - ((time.time() + offset) % 30) + 0.25
+                    await asyncio.sleep(delay)
+                    try:
+                        offset = await self.auth.steam_time_offset()
+                    except (SteamError, ValueError):
+                        pass
+                    await session.submit_guard_code(
+                        guard_code(material.shared_secret, timestamp=int(time.time() + offset)),
+                        code_type=device,
+                    )
+            else:
+                selected = next(
+                    (item for item in (device, email, 4, 5) if item in confirmations),
+                    confirmations[0] if confirmations else 0,
+                )
+                if on_challenge is None:
+                    raise AuthenticationInteractionRequired(session, selected)
+                position = confirmations.index(selected) if selected in confirmations else -1
+                message = (
+                    session.confirmation_messages[position]
+                    if position < len(session.confirmation_messages) and position >= 0
+                    else ""
+                )
+                code = await on_challenge(GuardChallenge(selected, message, session))
+                if selected in (device, email):
+                    if not code:
+                        raise AuthenticationInteractionRequired(session, selected)
+                    await session.submit_guard_code(code, code_type=selected)
+                elif selected not in (4, 5):
+                    raise AuthenticationInteractionRequired(session, selected)
+            credential_tokens = await session.wait_for_tokens()
+
+        refresh_token = credential_tokens.refresh_token
+        access_token = credential_tokens.access_token
+        if not access_token:
+            replacement = await self.auth.generate_access_token_result(
+                refresh_token, steam_id=credential_tokens.steam_id, allow_renewal=True
+            )
+            refresh_token, access_token = replacement.refresh_token, replacement.access_token
+        tokens = AuthTokens(
+            credential_tokens.steam_id,
+            credential_tokens.account_name or account_name,
+            refresh_token,
+            access_token,
+            credential_tokens.guard_data or material.guard_data or "",
+        )
+        if tokens.account_name.casefold() != account_name.casefold():
+            raise ProtocolError("authenticated account does not match the requested account")
+        if store is not None:
+            await store.save(
+                account_name,
+                LoginCredentials(
+                    material.password,
+                    material.shared_secret,
+                    tokens.refresh_token,
+                    tokens.steam_id,
+                    tokens.guard_data,
+                ),
+            )
+        await self._logon_access_token(tokens.access_token, tokens.refresh_token, tokens.steam_id)
+        return LoginResult("credentials", tokens)
 
     def _accept_logon(self, packet: Packet) -> None:
         result = CMsgClientLogonResponse()
@@ -651,7 +847,7 @@ class SteamClient:
             try:
                 self._ws = await self._open_socket()
                 delay = self._reconnect_delay
-                if self._resume_anonymous or self._resume_token is not None:
+                if self._resume_anonymous or self._resume_token is not None or self._resume_auto:
                     self._reauth_task = asyncio.create_task(
                         self._restore_session(), name="pysteam-session-restore"
                     )
@@ -662,6 +858,14 @@ class SteamClient:
         try:
             if self._resume_anonymous:
                 await self.login_anonymous()
+            elif self._resume_auto is not None:
+                account_name, credentials, store, on_challenge = self._resume_auto
+                await self.login_auto(
+                    account_name,
+                    credentials=credentials,
+                    store=store,
+                    on_challenge=on_challenge,
+                )
             elif self._resume_token is not None:
                 await self.logon(self._resume_token, steam_id=self._resume_steam_id)
         except asyncio.CancelledError:
