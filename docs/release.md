@@ -1,40 +1,23 @@
 # Release gate
 
-## Current status (2026-10-01)
+## Current status (2026-10-06)
 
-- Windows local checks pass on Python 3.13 and 3.14: 117 offline tests on each,
-  protobuf generation, issue-audit validation, Ruff, mypy, package build,
-  and isolated wheel import/CLI checks on both versions.
-- Anonymous live checks passed for CM logon, PICS app 570 and its public
-  manifest references, CDN server discovery, and WebAPI server info. Steam
-  time synchronization responded successfully.
-- The installed `pysteam app 220 --debug` command fetched app ID 220 over
-  anonymous CM/PICS and displayed 14 public depot manifest references.
-- The installed `pysteam doctor` command passed live CM discovery, WebSocket,
-  anonymous logon, and PICS checks for app ID 220. Anonymous depot-key access
-  for depot 221 returned EResult 15; the CLI now explains that an entitled
-  account is needed. Authenticated CLI depot listing and download still need
-  an opt-in account smoke test.
-- Cross-platform CI has been configured but has not run because this local
-  repository has no remote.
-- Dedicated-account credential, QR, refresh-token, GC, and CDN manifest/file
-  smoke tests remain to be run. No release has been published.
-- Multi-account profile registration, selection, legacy-store migration, and
-  enrollment handoff pass offline tests. Live profile and authenticated depot
-  smoke tests remain opt-in and pending.
-- A user-run Steam Guard enrollment saved an encrypted maFile and reached
-  active status. A separate controlled-account release smoke remains pending.
-- A user-run maFile login returned CM EResult 15. Packet review found that CM
-  received an access token where SteamKit sends a refresh token. A later
-  user-run retry exposed a legacy EMsg 798 guest-pass update during logon.
-  The receiver now skips bounded unsolicited legacy packets, including those
-  inside Multi packets, while preserving control-message and protocol errors.
-  The maFile check has Rich-formatted, redacted `--debug` progress and opt-in
-  `--remember` encrypted credential storage. The user subsequently reported a
-  successful maFile login; the separate controlled-account release smoke
-  remains pending.
-- The `pysteam-sdk` PyPI JSON endpoint returned HTTP 404 on this date;
-  availability and ownership must be checked again before publication.
+- Offline checks pass on Python 3.13 and 3.14, including 117 tests, protobuf
+  generation, issue-audit validation, Ruff, mypy, package builds, and isolated
+  wheel import and CLI checks.
+- Windows, Linux, and macOS CI passed on Python 3.13 and 3.14 for the last
+  checked `main` commit. The Python 3.15 preview lane also passed. Check CI
+  again after each release change.
+- Anonymous live checks passed for CM logon, PICS app data and manifest
+  references, CDN server discovery, WebAPI server info, and Steam time sync.
+  `pysteam doctor` and `pysteam app 220` also passed.
+- Multi-account profiles, vault migration, Steam Guard enrollment handoff,
+  authentication, and content tools have offline coverage. Dedicated-account
+  login, QR, GC, authenticated depot, and archive/restore checks remain pending.
+- Anonymous depot-key access for a protected depot returned EResult 15, as
+  expected; the CLI explains that an entitled account is needed.
+- The `pysteam-sdk` PyPI JSON endpoint returned HTTP 404 on this date. This is
+  not a reservation; check again immediately before publishing.
 - The portable archive, first-run vault, SteamPipe/SIS import and export,
   Workshop metadata and content, and Steam client package commands have
   offline fixtures and command checks. Anonymous live Workshop discovery and
@@ -47,6 +30,7 @@
   run and rolls them back on a handled failure. A power loss during rotation
   can leave a subset using the new password; preserve both passwords until
   all registered archives have been verified.
+- No release has been published.
 
 The first public release is gated on all of the following:
 
@@ -141,6 +125,40 @@ moving that copy to another directory, and SIS export/import with the same
 controlled depot. Record IDs and results only; keep depot keys and tokens out
 of logs and fixtures.
 
-Do not publish from CI automatically. The 3.15 preview lane is advisory until
-the final interpreter and dependencies are verified and the supported-version
-metadata is updated.
+## Publishing
+
+The release workflow at `.github/workflows/release.yml` runs only when started
+manually. It requires a `v`-prefixed Git tag whose version exactly matches
+`pyproject.toml`, repeats the offline checks, builds from source, tests the
+wheel, and uploads the same artifacts through PyPI Trusted Publishing. It does
+not publish on a push, tag creation, or ordinary CI run.
+
+Once all release gates above pass:
+
+1. Inspect the wheel and source archive for unintended files or private data.
+   A PyPI upload is public and cannot be replaced at the same version.
+2. In the GitHub repository, create an environment named `pypi` and configure
+   its required reviewer and deployment restrictions for release tags.
+3. In the PyPI account's **Publishing** settings, add a pending GitHub Trusted
+   Publisher with project `pysteam-sdk`, owner `pottink`, repository `pysteam`,
+   workflow `release.yml`, and environment `pypi`. The names must match exactly.
+   A pending publisher does not reserve the project name.
+4. Merge the release workflow into `main`, wait for CI to pass, then create and
+   push an annotated tag for the package version. For the current alpha:
+
+   ```powershell
+   git tag -a v0.1.0a0 -m "pysteam-sdk 0.1.0a0"
+   git push origin v0.1.0a0
+   ```
+
+5. Manually dispatch **Publish to PyPI** at that tag, using GitHub Actions or
+   `gh workflow run release.yml --ref v0.1.0a0`. Approve the protected `pypi`
+   environment after reviewing the build. The workflow needs no PyPI token.
+6. Check the published files and install from PyPI in an isolated environment:
+
+   ```powershell
+   uv run --no-project --isolated --python 3.14 --with pysteam-sdk==0.1.0a0 python -c "import pysteam"
+   ```
+
+The 3.15 preview lane remains advisory until the final interpreter and
+dependencies are verified and the supported-version metadata is updated.
