@@ -12,14 +12,29 @@ from urllib.parse import urlsplit
 import typer
 
 from pysteam import EncryptedFileCredentialStore, LoginCredentials, SteamClient, WebAPIClient
+from pysteam.accounts.vault import vault_passphrase
 
 
-async def smoke(*, anonymous: bool, automatic: bool = False) -> None:
-    token = None if anonymous or automatic else os.environ.get("PYSTEAM_TEST_REFRESH_TOKEN")
-    account_name = None if anonymous or automatic else os.environ.get("PYSTEAM_TEST_USERNAME")
-    if not anonymous and not automatic and not token:
+async def smoke(
+    *,
+    anonymous: bool,
+    automatic: bool = False,
+    saved_account: str | None = None,
+    passphrase: str | None = None,
+) -> None:
+    token = (
+        None
+        if anonymous or automatic or saved_account is not None
+        else os.environ.get("PYSTEAM_TEST_REFRESH_TOKEN")
+    )
+    account_name = (
+        None
+        if anonymous or automatic or saved_account is not None
+        else os.environ.get("PYSTEAM_TEST_USERNAME")
+    )
+    if not anonymous and not automatic and saved_account is None and not token:
         raise RuntimeError("PYSTEAM_TEST_REFRESH_TOKEN is required")
-    if not anonymous and not automatic and not account_name:
+    if not anonymous and not automatic and saved_account is None and not account_name:
         raise RuntimeError("PYSTEAM_TEST_USERNAME is required")
     async with SteamClient(timeout=10, auto_reconnect=False) as client:
         if anonymous:
@@ -50,6 +65,9 @@ async def smoke(*, anonymous: bool, automatic: bool = False) -> None:
                 if not await store.load(os.environ["PYSTEAM_TEST_USERNAME"]):
                     raise RuntimeError("automatic login did not save credentials")
                 print(f"Automatic CM logon succeeded for SteamID {result.tokens.steam_id}")
+        elif saved_account is not None:
+            result = await client.login_saved(saved_account, passphrase=passphrase)
+            print(f"Saved-account CM logon succeeded for SteamID {result.tokens.steam_id}")
         else:
             assert token is not None and account_name is not None
             await client.logon(token, account_name=account_name)
@@ -124,12 +142,27 @@ def run(
     anonymous: Annotated[
         bool, typer.Option("--anonymous", help="Run only anonymous checks.")
     ] = False,
+    saved_account: Annotated[
+        str | None,
+        typer.Option("--saved-account", help="Use a saved test profile without exporting tokens."),
+    ] = None,
 ) -> None:
-    if sum((i_control_account, auto_login, anonymous)) != 1:
+    if sum((i_control_account, auto_login, anonymous, saved_account is not None)) != 1:
         raise typer.BadParameter(
-            "choose exactly one of --i-control-account, --auto-login, or --anonymous"
+            "choose exactly one of --i-control-account, --auto-login, --anonymous, "
+            "or --saved-account"
         )
-    asyncio.run(smoke(anonymous=anonymous, automatic=auto_login))
+    passphrase = None
+    if saved_account is not None:
+        passphrase = vault_passphrase() or typer.prompt("Vault password", hide_input=True)
+    asyncio.run(
+        smoke(
+            anonymous=anonymous,
+            automatic=auto_login,
+            saved_account=saved_account,
+            passphrase=passphrase,
+        )
+    )
 
 
 if __name__ == "__main__":

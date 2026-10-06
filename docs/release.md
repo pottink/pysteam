@@ -57,6 +57,12 @@ token through `PYSTEAM_TEST_REFRESH_TOKEN`, then run:
 uv run python scripts/smoke_live.py --i-control-account
 ```
 
+If the dedicated test account is registered with `pysteam account add`, run
+`uv run python scripts/smoke_live.py --saved-account TEST_ACCOUNT` instead.
+The script prompts privately for the vault password unless a vault passphrase
+environment variable is set, and it uses the saved refresh token or password.
+No token needs to be copied into the shell.
+
 An anonymous read-only CM/PICS check can be run separately with
 `uv run python scripts/smoke_live.py --anonymous`. It does not replace the
 account smoke procedure.
@@ -116,6 +122,12 @@ On a dedicated account with rights to a small test depot, set
 ```powershell
 uv run python scripts/smoke_archive.py --i-control-account
 ```
+
+For a registered test profile, set only `PYSTEAM_TEST_APP_ID` and
+`PYSTEAM_TEST_DEPOT_ID` (and optionally `PYSTEAM_TEST_MANIFEST_ID`), then run
+`uv run python scripts/smoke_archive.py --i-control-account --account TEST_ACCOUNT`.
+The vault password is prompted privately unless supplied through the existing
+environment setting. The account must be entitled to the chosen depot.
 
 The script archives encrypted chunks, verifies the offline copy, extracts the
 files to a temporary directory, and compares file digests. It is opt-in and
