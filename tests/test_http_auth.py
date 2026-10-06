@@ -117,6 +117,22 @@ async def test_credential_auth_challenge_request() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mobile_auth_uses_mobile_token_platform() -> None:
+    fake = FakeAuthCM()
+    await AuthenticationClient(fake).begin_credentials(
+        "user", "password", remember_login=True, platform_kind="mobile"
+    )
+    assert fake.request is not None
+    assert fake.request.platform_type == auth_proto.k_EAuthTokenPlatformType_MobileApp
+    assert (
+        fake.request.device_details.platform_type == auth_proto.k_EAuthTokenPlatformType_MobileApp
+    )
+    assert fake.request.device_details.os_type == -500
+    assert fake.request.device_details.gaming_device_type == 528
+    assert not fake.request.HasField("website_id")
+
+
+@pytest.mark.asyncio
 async def test_webapi_rejects_invalid_json() -> None:
     async def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"not-json")

@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import os
 import tempfile
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlsplit
+
+import typer
 
 from pysteam import EncryptedFileCredentialStore, LoginCredentials, SteamClient, WebAPIClient
 
 
 async def smoke(*, anonymous: bool, automatic: bool = False) -> None:
     token = None if anonymous or automatic else os.environ.get("PYSTEAM_TEST_REFRESH_TOKEN")
+    account_name = None if anonymous or automatic else os.environ.get("PYSTEAM_TEST_USERNAME")
     if not anonymous and not automatic and not token:
         raise RuntimeError("PYSTEAM_TEST_REFRESH_TOKEN is required")
+    if not anonymous and not automatic and not account_name:
+        raise RuntimeError("PYSTEAM_TEST_USERNAME is required")
     async with SteamClient(timeout=10, auto_reconnect=False) as client:
         if anonymous:
             await client.login_anonymous()
@@ -46,8 +51,8 @@ async def smoke(*, anonymous: bool, automatic: bool = False) -> None:
                     raise RuntimeError("automatic login did not save credentials")
                 print(f"Automatic CM logon succeeded for SteamID {result.tokens.steam_id}")
         else:
-            assert token is not None
-            await client.logon(token)
+            assert token is not None and account_name is not None
+            await client.logon(token, account_name=account_name)
             print(f"CM logon succeeded for SteamID {client.steam_id}")
         info = await client.get_product_info(app_ids=[570])
         if 570 not in info.apps:
@@ -72,7 +77,7 @@ async def smoke(*, anonymous: bool, automatic: bool = False) -> None:
                 if host is None:
                     raise RuntimeError("CDN server URL has no host")
                 auth_token = await client.cdn.get_auth_token(app_id, depot_id, host)
-            result = await client.cdn.get_manifest(
+            depot_manifest = await client.cdn.get_manifest(
                 server=servers[0],
                 app_id=app_id,
                 depot_id=depot_id,
@@ -80,15 +85,18 @@ async def smoke(*, anonymous: bool, automatic: bool = False) -> None:
                 depot_key=key,
                 auth_token=auth_token,
             )
-            print(f"CDN manifest {result.manifest_id} parsed with {len(result.files)} files")
+            print(
+                f"CDN manifest {depot_manifest.manifest_id} parsed "
+                f"with {len(depot_manifest.files)} files"
+            )
             filename = os.environ.get("PYSTEAM_TEST_FILE")
             if filename:
-                sample = result.file(filename)
+                sample = depot_manifest.file(filename)
                 with tempfile.TemporaryDirectory(prefix="pysteam-smoke-") as directory:
                     destination = Path(directory) / "sample"
                     await client.cdn.download_file(
                         server=servers[0],
-                        manifest=result,
+                        manifest=depot_manifest,
                         file=sample,
                         depot_key=key,
                         destination=destination,
@@ -102,14 +110,26 @@ async def smoke(*, anonymous: bool, automatic: bool = False) -> None:
         print("Web API server info succeeded")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--i-control-account", action="store_true")
-    mode.add_argument("--auto-login", action="store_true")
-    mode.add_argument("--anonymous", action="store_true")
-    arguments = parser.parse_args()
-    asyncio.run(smoke(anonymous=arguments.anonymous, automatic=arguments.auto_login))
+main = typer.Typer(help="Run opt-in live Steam connection checks.", add_completion=False)
+
+
+@main.command()
+def run(
+    i_control_account: Annotated[
+        bool, typer.Option("--i-control-account", help="Use the configured test account.")
+    ] = False,
+    auto_login: Annotated[
+        bool, typer.Option("--auto-login", help="Exercise credential and Steam Guard login.")
+    ] = False,
+    anonymous: Annotated[
+        bool, typer.Option("--anonymous", help="Run only anonymous checks.")
+    ] = False,
+) -> None:
+    if sum((i_control_account, auto_login, anonymous)) != 1:
+        raise typer.BadParameter(
+            "choose exactly one of --i-control-account, --auto-login, or --anonymous"
+        )
+    asyncio.run(smoke(anonymous=anonymous, automatic=auto_login))
 
 
 if __name__ == "__main__":

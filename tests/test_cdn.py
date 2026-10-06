@@ -77,10 +77,14 @@ def test_encrypted_zip_chunk_integrity() -> None:
         a = (a + value) % 65521
         b = (b + a) % 65521
         crc = b << 16 | a
-    chunk = DepotChunk(b"0" * 20, crc, 0, len(clear), len(encrypted))
+    chunk = DepotChunk(hashlib.sha1(clear).digest(), crc, 0, len(clear), len(encrypted))
     assert process_chunk(encrypted, key, chunk) == clear
     with pytest.raises(CDNError):
-        process_chunk(encrypted, key, DepotChunk(b"0" * 20, crc + 1, 0, len(clear), len(encrypted)))
+        process_chunk(
+            encrypted,
+            key,
+            DepotChunk(hashlib.sha1(clear).digest(), crc + 1, 0, len(clear), len(encrypted)),
+        )
 
 
 def test_vzip_bounded_decompression() -> None:

@@ -1,24 +1,32 @@
 import asyncio
+import logging
+import struct
 
 import httpx
 import pytest
+from websockets.exceptions import ConnectionClosedError
+from websockets.frames import Close
 
-from pysteam import RequestTimeout, SteamClient, SteamResultError, TransportError
+from pysteam import ProtocolError, RequestTimeout, SteamClient, SteamResultError, TransportError
 from pysteam.proto import enums_clientserver_pb2 as emsg
-from pysteam.proto.steammessages_base_pb2 import CMsgProtoBufHeader
+from pysteam.proto.steammessages_base_pb2 import CMsgMulti, CMsgProtoBufHeader
 from pysteam.proto.steammessages_clientserver_2_pb2 import CMsgGCClient
 from pysteam.proto.steammessages_clientserver_appinfo_pb2 import (
     CMsgClientPICSAccessTokenResponse,
     CMsgClientPICSProductInfoRequest,
     CMsgClientPICSProductInfoResponse,
 )
-from pysteam.proto.steammessages_clientserver_login_pb2 import CMsgClientHello
+from pysteam.proto.steammessages_clientserver_login_pb2 import (
+    CMsgClientHello,
+    CMsgClientLogon,
+    CMsgClientLogonResponse,
+)
 from pysteam.protocol import decode_packet, encode_packet
 
 
 class FakeSocket:
     def __init__(self) -> None:
-        self.incoming: asyncio.Queue[bytes | None] = asyncio.Queue()
+        self.incoming: asyncio.Queue[bytes | Exception | None] = asyncio.Queue()
         self.sent: asyncio.Queue[bytes] = asyncio.Queue()
 
     async def send(self, data: bytes) -> None:
@@ -32,6 +40,8 @@ class FakeSocket:
             item = await self.incoming.get()
             if item is None:
                 break
+            if isinstance(item, Exception):
+                raise item
             yield item
 
 
@@ -41,6 +51,45 @@ def _ready_client() -> tuple[SteamClient, FakeSocket]:
     client._ws = socket  # type: ignore[assignment]
     client._receiver = asyncio.create_task(client._receive_loop())
     return client, socket
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_cm_logon_packet(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="pysteam")
+    client, socket = _ready_client()
+    try:
+        token = "sensitive-refresh-token-123"
+        pending = asyncio.create_task(client.logon(token, account_name="user", steam_id=42))
+        packet = decode_packet(await socket.sent.get())
+        assert packet.emsg == emsg.k_EMsgClientLogon
+        assert packet.header.steamid == 0x0110000100000000
+        body = CMsgClientLogon.FromString(packet.body)
+        assert body.account_name == "user"
+        assert body.access_token == token
+        assert body.should_remember_password
+        assert body.supports_rate_limit_response
+        await socket.incoming.put(struct.pack("<I", 798) + bytes(32))
+        nested_legacy = struct.pack("<I", 798) + bytes(32)
+        nested_logon = encode_packet(
+            emsg.k_EMsgClientLogOnResponse,
+            CMsgClientLogonResponse(eresult=1),
+            CMsgProtoBufHeader(steamid=42, client_sessionid=7),
+        )
+        multi_body = b"".join(
+            struct.pack("<I", len(inner)) + inner for inner in (nested_legacy, nested_logon)
+        )
+        await socket.incoming.put(
+            encode_packet(emsg.k_EMsgMulti, CMsgMulti(message_body=multi_body))
+        )
+        await pending
+        assert client.steam_id == 42
+        assert client.session_id == 7
+        assert token not in caplog.text
+        assert "CM TX ClientLogon (5514)" in caplog.text
+        assert "CM RX > ClientLogOnResponse (751)" in caplog.text
+        assert "ClientUpdateGuestPassesList (798) skipped" in caplog.text
+    finally:
+        await client.aclose()
 
 
 @pytest.mark.asyncio
@@ -91,9 +140,25 @@ async def test_malformed_cm_packet_fails_pending_request() -> None:
         )
         await socket.sent.get()
         await socket.incoming.put(b"bad")
-        with pytest.raises(TransportError):
+        with pytest.raises(ProtocolError, match="invalid packet size"):
             await asyncio.wait_for(pending, 1)
         assert not client.connected
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_cm_close_reports_code_without_server_reason() -> None:
+    client, socket = _ready_client()
+    try:
+        pending = asyncio.create_task(
+            client.call_um("Test.One#1", CMsgClientHello(), CMsgClientHello)
+        )
+        await socket.sent.get()
+        await socket.incoming.put(ConnectionClosedError(Close(1008, "secret"), None))
+        with pytest.raises(TransportError, match="code 1008") as captured:
+            await asyncio.wait_for(pending, 1)
+        assert "secret" not in str(captured.value)
     finally:
         await client.aclose()
 

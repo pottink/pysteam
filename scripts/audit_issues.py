@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
+
+import typer
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "docs" / "issue-audit.json"
@@ -454,22 +455,33 @@ def retriage() -> None:
     OUTPUT.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--refresh", action="store_true", help="Fetch current GitHub issue snapshot"
-    )
-    parser.add_argument(
-        "--check", action="store_true", help="Validate the committed offline snapshot"
-    )
-    parser.add_argument("--retriage", action="store_true", help="Apply updated triage offline")
-    options = parser.parse_args()
-    if options.refresh:
+main = typer.Typer(
+    help="Refresh or validate the ValvePython and SteamKit issue audit.", add_completion=False
+)
+
+
+@main.command()
+def audit(
+    refresh: Annotated[
+        bool, typer.Option("--refresh", help="Fetch the current GitHub issue snapshot.")
+    ] = False,
+    check_requested: Annotated[
+        bool, typer.Option("--check", help="Validate the offline snapshot.")
+    ] = False,
+    retriage_requested: Annotated[
+        bool, typer.Option("--retriage", help="Apply triage offline.")
+    ] = False,
+) -> None:
+    if refresh:
         OUTPUT.parent.mkdir(parents=True, exist_ok=True)
         OUTPUT.write_text(
             json.dumps(snapshot(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
-    if options.retriage:
+    if retriage_requested:
         retriage()
-    if options.check or not (options.refresh or options.retriage):
+    if check_requested or not (refresh or retriage_requested):
         check()
+
+
+if __name__ == "__main__":
+    main()

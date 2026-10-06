@@ -52,7 +52,7 @@ def decode_packet(data: bytes) -> Packet:
         raise ProtocolError("invalid packet size")
     tagged_emsg, header_size = struct.unpack_from("<II", data)
     if not tagged_emsg & PROTO_MASK:
-        raise ProtocolError("non-protobuf CM packet is unsupported")
+        raise ProtocolError(f"non-protobuf CM packet EMsg {tagged_emsg} is unsupported")
     if header_size > len(data) - 8:
         raise ProtocolError("header length exceeds packet")
     header = CMsgProtoBufHeader()
@@ -63,8 +63,16 @@ def decode_packet(data: bytes) -> Packet:
     return Packet(tagged_emsg & ~PROTO_MASK, header, data[8 + header_size :])
 
 
-def unpack_multi(packet: Packet) -> list[Packet]:
-    """Unpack an EMsg.Multi body, limiting decompressed data and entry count."""
+def peek_packet_type(data: bytes) -> tuple[int, bool]:
+    """Read the bounded EMsg prefix without decoding an unsupported legacy body."""
+    if len(data) < 4 or len(data) > MAX_PACKET_SIZE:
+        raise ProtocolError("invalid packet size")
+    tagged_emsg = struct.unpack_from("<I", data)[0]
+    return tagged_emsg & ~PROTO_MASK, bool(tagged_emsg & PROTO_MASK)
+
+
+def unpack_multi_raw(packet: Packet) -> list[bytes]:
+    """Unpack bounded EMsg.Multi entries, preserving legacy packet framing."""
     message = CMsgMulti()
     try:
         message.ParseFromString(packet.body)
@@ -81,7 +89,7 @@ def unpack_multi(packet: Packet) -> list[Packet]:
             raise ProtocolError("multi-message uncompressed size mismatch")
     if len(body) > MAX_MULTI_SIZE:
         raise ProtocolError("multi-message exceeds size limit")
-    packets: list[Packet] = []
+    packets: list[bytes] = []
     offset = 0
     while offset < len(body):
         if len(packets) == MAX_MULTI_MESSAGES or len(body) - offset < 4:
@@ -90,6 +98,11 @@ def unpack_multi(packet: Packet) -> list[Packet]:
         offset += 4
         if size == 0 or size > len(body) - offset:
             raise ProtocolError("invalid multi-message entry length")
-        packets.append(decode_packet(body[offset : offset + size]))
+        packets.append(body[offset : offset + size])
         offset += size
     return packets
+
+
+def unpack_multi(packet: Packet) -> list[Packet]:
+    """Unpack EMsg.Multi entries that all use protobuf framing."""
+    return [decode_packet(raw) for raw in unpack_multi_raw(packet)]

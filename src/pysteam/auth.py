@@ -6,6 +6,7 @@ import asyncio
 import base64
 import binascii
 import json
+import logging
 import platform
 import time
 from collections.abc import Awaitable, Callable
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 
 _T = TypeVar("_T", bound=Message)
 _PREFIX = "Authentication."
+_LOG = logging.getLogger(__name__)
 
 
 def _os_type() -> int:
@@ -126,6 +128,7 @@ class AuthSession:
         except SteamResultError as exc:
             if exc.eresult != 29:  # DuplicateRequest can follow a mobile-app approval.
                 raise AuthenticationError("submit Steam Guard code", exc.eresult) from exc
+        _LOG.debug("Steam Guard confirmation type %d submitted", code_type)
 
     async def poll(self) -> AuthTokens | None:
         request = auth_proto.CAuthentication_PollAuthSessionStatus_Request(
@@ -145,7 +148,9 @@ class AuthSession:
         if response.new_challenge_url:
             self.challenge_url = response.new_challenge_url
         if not response.refresh_token:
+            _LOG.debug("Authentication session pending")
             return None
+        _LOG.debug("Authentication session issued tokens")
         return AuthTokens(
             steam_id=_steam_id_from_jwt(response.refresh_token),
             account_name=response.account_name,
@@ -177,10 +182,13 @@ class AuthenticationClient:
         self._client = client
 
     async def _call(self, method: str, request: Message, response_type: type[_T]) -> _T:
+        _LOG.debug("Authentication UM %s started", method)
         try:
-            return await self._client.call_um(_PREFIX + method + "#1", request, response_type)
+            response = await self._client.call_um(_PREFIX + method + "#1", request, response_type)
         except SteamResultError as exc:
             raise AuthenticationError(method, exc.eresult) from exc
+        _LOG.debug("Authentication UM %s completed", method)
+        return response
 
     async def begin_credentials(
         self,
@@ -190,9 +198,13 @@ class AuthenticationClient:
         guard_data: str = "",
         remember_login: bool = False,
         device_name: str | None = None,
+        platform_kind: Literal["client", "mobile"] = "client",
     ) -> AuthSession:
         if not username or not password:
             raise ValueError("username and password are required")
+        if platform_kind not in ("client", "mobile"):
+            raise ValueError("unsupported authentication platform")
+        _LOG.debug("Beginning credential authentication for %s platform", platform_kind)
         key = await self._call(
             "GetPasswordRSAPublicKey",
             auth_proto.CAuthentication_GetPasswordRSAPublicKey_Request(account_name=username),
@@ -205,30 +217,42 @@ class AuthenticationClient:
             encrypted = public_key.encrypt(password.encode("utf-8"), padding.PKCS1v15())
         except (ValueError, OverflowError) as exc:
             raise ProtocolError("Steam returned an invalid password public key") from exc
+        mobile = platform_kind == "mobile"
+        token_platform = (
+            auth_proto.k_EAuthTokenPlatformType_MobileApp
+            if mobile
+            else auth_proto.k_EAuthTokenPlatformType_SteamClient
+        )
         details = auth_proto.CAuthentication_DeviceDetails(
             device_friendly_name=device_name or f"pysteam ({platform.node()})",
-            platform_type=auth_proto.k_EAuthTokenPlatformType_SteamClient,
-            os_type=_os_type(),
+            platform_type=token_platform,
+            os_type=-500 if mobile else _os_type(),
+            gaming_device_type=528 if mobile else 0,
         )
         request = auth_proto.CAuthentication_BeginAuthSessionViaCredentials_Request(
             account_name=username,
             encrypted_password=base64.b64encode(encrypted).decode("ascii"),
             encryption_timestamp=key.timestamp,
             remember_login=remember_login,
-            platform_type=auth_proto.k_EAuthTokenPlatformType_SteamClient,
+            platform_type=token_platform,
             persistence=(
                 enums_pb2.k_ESessionPersistence_Persistent
                 if remember_login
                 else enums_pb2.k_ESessionPersistence_Ephemeral
             ),
-            website_id="Client",
             device_details=details,
             guard_data=guard_data,
         )
+        if not mobile:
+            request.website_id = "Client"
         response = await self._call(
             "BeginAuthSessionViaCredentials",
             request,
             auth_proto.CAuthentication_BeginAuthSessionViaCredentials_Response,
+        )
+        _LOG.debug(
+            "Credential authentication offers confirmation types %s",
+            tuple(item.confirmation_type for item in response.allowed_confirmations),
         )
         return AuthSession(
             self._client,
