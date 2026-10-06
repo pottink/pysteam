@@ -2,12 +2,12 @@
 
 ## Current status (2026-10-06)
 
-- Offline checks pass on Python 3.13 and 3.14, including 117 tests, protobuf
+- Offline checks pass on Python 3.13 and 3.14, including 120 tests, protobuf
   generation, issue-audit validation, Ruff, mypy, package builds, and isolated
   wheel import and CLI checks.
-- Windows, Linux, and macOS CI passed on Python 3.13 and 3.14 for the last
-  checked `main` commit. The Python 3.15 preview lane also passed. Check CI
-  again after each release change.
+- Windows, Linux, and macOS CI passed on Python 3.13 and 3.14 for commit
+  `8e3fd76`. The Python 3.15 preview lane also passed. Check CI again after
+  the CDN fixes and each release change.
 - Anonymous live checks passed for CM logon, PICS app data and manifest
   references, CDN server discovery, WebAPI server info, and Steam time sync.
   `pysteam doctor` and `pysteam app 220` also passed.
@@ -16,8 +16,16 @@
   discovery, and WebAPI server info on commit `71a1d12`. The account identity
   is kept out of this public repository.
 - Multi-account profiles, vault migration, Steam Guard enrollment handoff,
-  authentication, and content tools have offline coverage. QR, GC,
-  authenticated depot, and archive/restore checks remain pending.
+  authentication, and content tools have offline coverage. QR, GC, and
+  controlled-account depot checks remain pending.
+- A live archive check on 2026-10-06 used locally supplied backup keys to
+  archive and verify all nine selected current Windows/English depots of app
+  570, then restore 6,936 files (71.43 GiB) from 32.53 GiB of encrypted
+  chunks. The complete one-depot sample app 480/481 also archived, verified,
+  and restored: eight chunks and eight files. These checks found and fixed
+  wrapped Base64 filenames, raw LZMA streams without end markers, and zero-byte
+  files with Steam's all-zero checksum. They do not replace an entitled-account
+  archive check.
 - Anonymous depot-key access for a protected depot returned EResult 15, as
   expected; the CLI explains that an entitled account is needed.
 - The `pysteam-sdk` PyPI JSON endpoint returned HTTP 404 on this date. This is
@@ -28,8 +36,8 @@
   Steam client update manifest retrieval passed. A package download and
   controlled-account archive/restore smoke have not been run.
 - Synthetic 1, 8, and 16-worker archive benchmarks are recorded in
-  [archive-benchmark.md](archive-benchmark.md). They are local fixture
-  measurements, not Steam CDN throughput claims.
+  [archive-benchmark.md](archive-benchmark.md), along with a small live CDN
+  comparison. The synthetic results are local fixture measurements.
 - Vault password rotation updates registered archive capsules during a normal
   run and rolls them back on a handled failure. A power loss during rotation
   can leave a subset using the new password; preserve both passwords until
@@ -133,9 +141,10 @@ For a registered test profile, set only `PYSTEAM_TEST_APP_ID` and
 The vault password is prompted privately unless supplied through the existing
 environment setting. The account must be entitled to the chosen depot.
 
-The script archives encrypted chunks, verifies the offline copy, extracts the
-files to a temporary directory, and compares file digests. It is opt-in and
-has not been run in this workspace. Also exercise `pysteam archive repair`
+The script archives encrypted chunks, verifies the offline copy, extracts one
+sample file to a temporary directory, and verifies its digest. It is opt-in and
+has not been run with a controlled account in this workspace. Also exercise
+`pysteam archive repair`
 after removing a chunk from a *copy* of a test archive, `archive rekey` after
 moving that copy to another directory, and SIS export/import with the same
 controlled depot. Record IDs and results only; keep depot keys and tokens out

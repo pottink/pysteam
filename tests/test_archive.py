@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import json
@@ -18,6 +19,7 @@ from typer.testing import CliRunner
 import pysteam.cli as cli
 from pysteam import (
     ArchiveStore,
+    CDNClient,
     CDNError,
     ContentArchiver,
     DepotManifest,
@@ -57,18 +59,19 @@ def _adler32_zero(clear: bytes) -> int:
 
 
 def _manifest(clear: bytes = CONTENT) -> tuple[DepotManifest, bytes]:
-    encrypted = _encrypted_chunk(clear)
+    encrypted = _encrypted_chunk(clear) if clear else b""
     payload = ContentManifestPayload()
     file = payload.mappings.add()
     file.filename = "folder/content.txt"
     file.size = len(clear)
-    file.sha_content = hashlib.sha1(clear).digest()
-    chunk = file.chunks.add()
-    chunk.sha = hashlib.sha1(clear).digest()
-    chunk.crc = _adler32_zero(clear)
-    chunk.offset = 0
-    chunk.cb_original = len(clear)
-    chunk.cb_compressed = len(encrypted)
+    file.sha_content = hashlib.sha1(clear).digest() if clear else bytes(20)
+    if clear:
+        chunk = file.chunks.add()
+        chunk.sha = hashlib.sha1(clear).digest()
+        chunk.crc = _adler32_zero(clear)
+        chunk.offset = 0
+        chunk.cb_original = len(clear)
+        chunk.cb_compressed = len(encrypted)
     metadata = ContentManifestMetadata(depot_id=123, gid_manifest=456)
     signature = ContentManifestSignature(signature=b"fixture")
     parts = ((0x71F617D0, payload), (0x1F4812BE, metadata), (0x1B81B817, signature))
@@ -77,6 +80,28 @@ def _manifest(clear: bytes = CONTENT) -> tuple[DepotManifest, bytes]:
         for marker, item in parts
     ) + struct.pack("<I", 0x32C415AB)
     return parse_manifest(raw), encrypted
+
+
+@pytest.mark.asyncio
+async def test_empty_file_with_steam_zero_checksum(tmp_path: Path) -> None:
+    manifest, _ = _manifest(b"")
+    store = ArchiveStore(tmp_path / "archive", PASSWORD)
+    store.save_key(123, KEY)
+    store.save_manifest(manifest, app_id=220, branch="public")
+    assert store.verify(123, 456) == (0, 0)
+    assert store.extract(123, 456, tmp_path / "restored")[0].read_bytes() == b""
+
+    cdn = CDNClient(None, http=None)  # type: ignore[arg-type]
+    chunks = [
+        chunk
+        async for chunk in cdn.iter_file_chunks(
+            server="https://cdn.test",
+            manifest=manifest,
+            file=manifest.files[0],
+            depot_key=KEY,
+        )
+    ]
+    assert chunks == []
 
 
 def test_appinfo_original_bytes_and_integrity(tmp_path: Path) -> None:
@@ -149,8 +174,10 @@ async def test_archive_resume_extract_rekey_and_corruption(tmp_path: Path) -> No
     archiver = ContentArchiver(FakeSteam(cdn), store, max_downloads=2)  # type: ignore[arg-type]
 
     cdn.fail = True
-    with pytest.raises(CDNError, match="could not be downloaded"):
+    with pytest.raises(CDNError, match="could not be downloaded") as failure:
         await archiver.archive_depot(220, 123)
+    assert isinstance(failure.value.__cause__, CDNError)
+    assert str(failure.value.__cause__) == "fixture failure"
     assert not store.list()[0].complete
 
     cdn.fail = False
@@ -176,6 +203,62 @@ async def test_archive_resume_extract_rekey_and_corruption(tmp_path: Path) -> No
     assert moved.verify(123, 456)[1] > 0
     with pytest.raises(CDNError):
         moved.extract(123, 456, tmp_path / "corrupt")
+    repaired = await ContentArchiver(FakeSteam(cdn), moved).archive_depot(220, 123)  # type: ignore[arg-type]
+    assert repaired.chunks_downloaded == 1
+    assert moved.verify(123, 456) == (1, 0)
+
+
+@pytest.mark.asyncio
+async def test_archive_spreads_workers_across_cdn_servers(tmp_path: Path) -> None:
+    payload = ContentManifestPayload()
+    chunks: dict[bytes, bytes] = {}
+    for index in range(2):
+        clear = f"fixture-{index}".encode()
+        encrypted = _encrypted_chunk(clear)
+        mapping = payload.mappings.add()
+        mapping.filename = f"file-{index}.txt"
+        mapping.size = len(clear)
+        mapping.sha_content = hashlib.sha1(clear).digest()
+        chunk = mapping.chunks.add()
+        chunk.sha = hashlib.sha1(clear).digest()
+        chunk.crc = _adler32_zero(clear)
+        chunk.cb_original = len(clear)
+        chunk.cb_compressed = len(encrypted)
+        chunks[chunk.sha] = encrypted
+    parts = (
+        (0x71F617D0, payload),
+        (0x1F4812BE, ContentManifestMetadata(depot_id=123, gid_manifest=456)),
+        (0x1B81B817, ContentManifestSignature(signature=b"fixture")),
+    )
+    raw = b"".join(
+        struct.pack("<II", marker, len(item.SerializeToString())) + item.SerializeToString()
+        for marker, item in parts
+    ) + struct.pack("<I", 0x32C415AB)
+    manifest = parse_manifest(raw)
+
+    class TwoServers(FakeCDN):
+        def __init__(self) -> None:
+            super().__init__(manifest, b"")
+            self.used: set[str] = set()
+
+        async def servers(self) -> tuple[str, ...]:
+            return ("https://cdn-a.invalid", "https://cdn-b.invalid")
+
+        async def get_chunk(self, **kwargs: object) -> bytes:
+            self.used.add(str(kwargs["server"]))
+            await asyncio.sleep(0)
+            chunk = kwargs["chunk"]
+            assert hasattr(chunk, "sha")
+            return chunks[chunk.sha]
+
+    cdn = TwoServers()
+    store = ArchiveStore(tmp_path / "archive", PASSWORD)
+    result = await ContentArchiver(FakeSteam(cdn), store, max_downloads=2).archive_depot(  # type: ignore[arg-type]
+        220, 123
+    )
+    assert result.chunks_downloaded == 2
+    assert cdn.used == {"https://cdn-a.invalid", "https://cdn-b.invalid"}
+    assert store.verify(123, 456) == (2, 0)
 
 
 @pytest.mark.asyncio

@@ -78,10 +78,13 @@ def _aes_decrypt(data: bytes, key: bytes) -> bytes:
 
 def _decrypt_filename(value: str, key: bytes) -> str:
     try:
-        encrypted = base64.b64decode(value, validate=True)
+        # Steam may wrap the Base64 text across lines. Remove only ASCII
+        # whitespace, then reject every other non-Base64 character.
+        encoded = "".join(char for char in value if char not in " \t\r\n")
+        encrypted = base64.b64decode(encoded, validate=True)
         clear = _aes_decrypt(encrypted, key).rstrip(b"\x00")
         return _relative_name(clear.decode("utf-8"))
-    except (binascii.Error, UnicodeError) as exc:
+    except (binascii.Error, UnicodeError, ValueError) as exc:
         raise CDNError("encrypted filename is invalid") from exc
 
 
@@ -119,6 +122,11 @@ class DepotManifest:
             if item.name == wanted:
                 return item
         raise KeyError(wanted)
+
+
+def _file_checksum_matches(file: DepotFile, digest: bytes) -> bool:
+    # Steam uses an all-zero SHA-1 field for some empty files.
+    return not file.sha or file.sha == digest or (file.size == 0 and file.sha == bytes(20))
 
 
 def parse_manifest(data: bytes, *, depot_key: bytes | None = None) -> DepotManifest:
@@ -250,7 +258,9 @@ def _decompress_chunk(data: bytes, maximum: int) -> bytes:
                     }
                 ],
             )
-            result = decompressor.decompress(data[12:-10], max_length=maximum + 1)
+            # Steam's raw LZMA stream may not have an end marker. Stop at the
+            # declared output length; decoding past it can produce extra bytes.
+            result = decompressor.decompress(data[12:-10], max_length=expected)
         except lzma.LZMAError as exc:
             raise CDNError("Valve LZMA decompression failed") from exc
         if len(result) != expected or zlib.crc32(result) != crc:
@@ -460,7 +470,7 @@ class CDNClient:
             position += len(clear)
             digest.update(clear)
             yield clear
-        if position != file.size or (file.sha and digest.digest() != file.sha):
+        if position != file.size or not _file_checksum_matches(file, digest.digest()):
             raise CDNError("depot file size or SHA-1 mismatch")
 
     async def get_chunk(

@@ -19,3 +19,27 @@ The gain is about 3.0× at eight workers and 3.1× at sixteen for this fixture.
 Actual Steam CDN speed, CPU use, and memory depend on chunk size, server
 latency, storage, and entitlement; this synthetic run is not a live download
 smoke test.
+
+## Live CDN comparison
+
+Measured on Windows with Python 3.14 on 2026-10-06. Each run downloaded the
+same current app 570 depot 373303 (192,837,504 encrypted bytes), using an
+anonymous CM session and a locally supplied depot key. The machine's active
+Ethernet link negotiated at 2.5 Gbps. Download-phase time starts before
+manifest retrieval and ends when the last chunk is checked and stored; total
+time includes the final full-depot verification. These are single-run local
+measurements, except that the one-server case was repeated once.
+
+| First-choice CDN servers | Download workers | CPU workers | Download phase | Effective archive input rate | Total time |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| One server | 32 | 0 | 16.9 s | 11.4 MB/s | 23.6 s |
+| One server, repeat | 32 | 0 | 16.2 s | 11.9 MB/s | 23.3 s |
+| Spread across eight | 32 | 0 | 13.5 s | 14.3 MB/s | 20.4 s |
+| Spread across eight | 32 | 4 | 13.6 s | 14.2 MB/s | 20.3 s |
+| Spread across eight | 64 | 0 | 12.7 s | 15.2 MB/s | 19.0 s |
+
+Spreading the workers' first requests across the eight returned servers helped
+in this run. Four decoding processes did not help this depot. The effective
+rate includes chunk decryption, checksum checks, and local writes; it is not
+a direct measurement of the network interface. Another CDN region, route, or
+machine may give different results.

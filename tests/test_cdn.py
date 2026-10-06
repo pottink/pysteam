@@ -55,6 +55,17 @@ def test_manifest_filename_and_path_regressions() -> None:
     assert manifest.file("folder/file.txt").name == "folder/file.txt"
     assert not manifest.filenames_encrypted
     assert parse_manifest(_manifest(filename, encrypted=True)).filenames_encrypted
+    wrapped = filename[:32] + "\r\n" + filename[32:] + "\n"
+    assert (
+        parse_manifest(_manifest(wrapped, encrypted=True), depot_key=key)
+        .file("folder/file.txt")
+        .name
+        == "folder/file.txt"
+    )
+    with pytest.raises(CDNError, match="encrypted filename is invalid"):
+        parse_manifest(
+            _manifest(filename[:32] + "!" + filename[32:], encrypted=True), depot_key=key
+        )
     for unsafe in ("../escape", "/absolute", "C:\\file", "a//b", "a/./b"):
         with pytest.raises(CDNError):
             parse_manifest(_manifest(unsafe))
@@ -104,6 +115,28 @@ def test_vzip_bounded_decompression() -> None:
     assert _decompress_chunk(envelope, 300) == clear
     with pytest.raises(CDNError):
         _decompress_chunk(envelope, 100)
+
+
+def test_vzip_stream_without_end_marker_stops_at_declared_size() -> None:
+    clear = b"abcde" * 2000
+    filters = [{"id": lzma.FILTER_LZMA1, "dict_size": 1 << 20, "lc": 3, "lp": 0, "pb": 2}]
+    encoded = lzma.compress(clear, format=lzma.FORMAT_RAW, filters=filters)
+    # Replace the encoder's end marker with trailing data, as seen in Steam chunks.
+    stream = encoded[:-7] + bytes.fromhex("f5b165224a58b791")
+    crc = zlib.crc32(clear)
+    envelope = (
+        b"VZa"
+        + struct.pack("<I", crc)
+        + bytes([3 + 9 * (5 * 2)])
+        + struct.pack("<I", 1 << 20)
+        + stream
+        + struct.pack("<II", crc, len(clear))
+        + b"zv"
+    )
+    assert _decompress_chunk(envelope, len(clear)) == clear
+    tampered = envelope[:-10] + struct.pack("<II", crc ^ 1, len(clear)) + b"zv"
+    with pytest.raises(CDNError, match="checksum"):
+        _decompress_chunk(tampered, len(clear))
 
 
 @pytest.mark.asyncio

@@ -24,7 +24,14 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from filelock import FileLock
 
 from pysteam.accounts.profiles import ensure_private_directory
-from pysteam.content.cdn import DepotChunk, DepotFile, DepotManifest, parse_manifest, process_chunk
+from pysteam.content.cdn import (
+    DepotChunk,
+    DepotFile,
+    DepotManifest,
+    _file_checksum_matches,
+    parse_manifest,
+    process_chunk,
+)
 from pysteam.errors import CDNError, CDNHTTPError, CredentialStoreError, TransportError
 
 if TYPE_CHECKING:
@@ -467,7 +474,7 @@ class ArchiveStore:
         path = self._chunk_path(depot_id, chunk)
         ensure_private_directory(path.parent)
         with FileLock(str(path) + ".lock", timeout=10):
-            if not self.has_chunk(depot_id, chunk, key):
+            if verified or not self.has_chunk(depot_id, chunk, key):
                 _atomic_write(path, encrypted)
 
     def verify(self, depot_id: int, manifest_id: int) -> tuple[int, int]:
@@ -482,16 +489,21 @@ class ArchiveStore:
             length = 0
             for chunk in sorted(file.chunks, key=lambda item: item.offset):
                 checked += 1
-                if not self.has_chunk(depot_id, chunk, key):
-                    missing += 1
-                    continue
                 if chunk.offset != length:
                     missing += 1
                     continue
-                clear = process_chunk(self._chunk_path(depot_id, chunk).read_bytes(), key, chunk)
+                path = self._chunk_path(depot_id, chunk)
+                try:
+                    if path.is_symlink() or path.stat().st_size != chunk.compressed_size:
+                        missing += 1
+                        continue
+                    clear = process_chunk(path.read_bytes(), key, chunk)
+                except (FileNotFoundError, CDNError):
+                    missing += 1
+                    continue
                 digest.update(clear)
                 length += len(clear)
-            if length != file.size or (file.sha and digest.digest() != file.sha):
+            if length != file.size or not _file_checksum_matches(file, digest.digest()):
                 missing += 1
         return checked, missing
 
@@ -555,7 +567,7 @@ class ArchiveStore:
                         position += len(clear)
                     output.flush()
                     os.fsync(output.fileno())
-                if position != file.size or (file.sha and digest.digest() != file.sha):
+                if position != file.size or not _file_checksum_matches(file, digest.digest()):
                     raise CDNError("archive file checksum mismatch")
                 os.replace(temporary, target)
                 written.append(target)
@@ -731,14 +743,17 @@ class ContentArchiver:
             for _ in range(self.max_downloads):
                 await queue.put(None)
 
-        async def worker() -> None:
+        async def worker(index: int) -> None:
             nonlocal downloaded, size
+            offset = index % len(servers)
+            preferred_servers = servers[offset:] + servers[:offset]
             while (chunk := await queue.get()) is not None:
                 units = max(1, (chunk.original_size + chunk.compressed_size + 1048575) // 1048576)
                 await memory.acquire(units)
                 try:
                     last_error: Exception | None = None
-                    for server in servers:
+                    saved = False
+                    for server in preferred_servers:
                         for attempt in range(3):
                             try:
                                 raw = await client.cdn.get_chunk(
@@ -762,6 +777,7 @@ class ContentArchiver:
                                 )
                                 downloaded += 1
                                 size += len(raw)
+                                saved = True
                                 if self.progress is not None:
                                     self.progress(downloaded, len(pending))
                                 break
@@ -779,11 +795,9 @@ class ContentArchiver:
                             except (TransportError, CDNError) as exc:
                                 last_error = exc
                             await asyncio.sleep(min(2**attempt, 4))
-                        else:
-                            continue
-                        if self.store.has_chunk(depot_id, chunk, key):
+                        if saved:
                             break
-                    if not self.store.has_chunk(depot_id, chunk, key):
+                    if not saved and not self.store.has_chunk(depot_id, chunk, key):
                         raise CDNError("CDN chunk could not be downloaded") from last_error
                 finally:
                     await memory.release(units)
@@ -791,10 +805,11 @@ class ContentArchiver:
         try:
             async with asyncio.TaskGroup() as group:
                 group.create_task(producer())
-                for _ in range(self.max_downloads):
-                    group.create_task(worker())
+                for index in range(self.max_downloads):
+                    group.create_task(worker(index))
         except* CDNError as group:
-            raise group.exceptions[0] from None
+            error = group.exceptions[0]
+            raise error from error.__cause__
         finally:
             if pool is not None:
                 pool.shutdown(wait=True, cancel_futures=True)
