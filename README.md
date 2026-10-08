@@ -13,7 +13,7 @@
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-43BFAE">
 </p>
 
-`pysteam-sdk` installs as `pysteam`. It is an independent Steam SDK built on secure CM WebSockets and current protobuf messages. **The project is in alpha and is not published yet.**
+`pysteam-sdk` installs as `pysteam`. It is an independent Steam SDK built on secure CM WebSockets and current protobuf messages. **This first release is an alpha; APIs and archive formats may change.**
 
 ## What you can do
 
@@ -28,16 +28,21 @@
 
 ## Get started
 
-From this checkout, with [uv](https://docs.astral.sh/uv/) installed:
+With [uv](https://docs.astral.sh/uv/) installed, add the SDK to a Python project:
 
 ```powershell
-git submodule update --init --recursive
-uv sync --locked --group dev
-uv run pysteam app 220
-uv run pysteam doctor
+uv add pysteam-sdk
 ```
 
-These commands inspect public app data and test connectivity without an account.
+To use the standalone CLI:
+
+```powershell
+uv tool install pysteam-sdk
+pysteam app 220
+pysteam doctor
+```
+
+The last two commands inspect public app data and test connectivity without an account.
 
 ## Use your account
 

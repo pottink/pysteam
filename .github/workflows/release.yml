@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           test "$GITHUB_REF_TYPE" = tag
-          test "$GITHUB_REF_NAME" = "v$(uv version --short)"
+          test "$GITHUB_REF_NAME" = "$(uv version --short)"
 
       - name: Install Python and locked dependencies
         run: |

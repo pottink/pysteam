@@ -53,10 +53,10 @@ The values must match. A pending publisher does not reserve the package name.
 
 After the checklist passes, update `pyproject.toml` to the release version,
 merge the release commit into `main`, and wait for CI. Create and push an
-annotated `v`-prefixed tag matching that version. Manually dispatch
-**Publish to PyPI** at that tag and approve the protected environment after
-reviewing the build. The workflow does not publish on ordinary pushes or tag
-creation and needs no PyPI token.
+annotated tag matching that version exactly (for example, `0.1.0a0`).
+Manually dispatch **Publish to PyPI** at that tag and approve the protected
+environment after reviewing the build. The workflow does not publish on
+ordinary pushes or tag creation and needs no PyPI token.
 
 Inspect the published files and install the exact version in an isolated
 environment. A PyPI upload is public and its version cannot be replaced.
